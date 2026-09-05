@@ -204,3 +204,19 @@ Blocking findings were fixed. These were not.
   `FormatSniffEngine` still lacks IGES detection — nothing to verify a
   decode against. The two gaps should close in the same change, whenever a
   real IGES fixture becomes available.
+- **`WasmAssetAccessor`'s default-`fetch` binding fix has no regression
+  test.** Code review of commit 3 caught a real bug: the default `fetchImpl`
+  captured the bare global `fetch` reference, which real browsers can
+  reject with "Illegal invocation" when it's later invoked as
+  `this.fetchImpl(...)` (a method call, not a bare `fetch(url)` call) —
+  browsers brand-check `fetch`'s receiver, and this repo's test suite runs
+  under Node (`vitest.config.ts` has no `environment: 'jsdom'`), whose
+  `fetch` (undici) doesn't perform that check at all. Confirmed by hand:
+  the exact failing shape (`this.fetchImpl(...)` with a bare `fetch`
+  default) throws nothing under Node — it just does a normal network
+  call — so no test in this suite can fail before the fix or catch a
+  regression after it. Fixed by wrapping the default as
+  `(input) => fetch(input)` rather than assigning `fetch` directly, but
+  this is trusted-by-reasoning, not verified-by-test. Revisit if this
+  repo ever gains a browser-based test target (Vitest browser mode,
+  Playwright) — worth a real regression test then.
