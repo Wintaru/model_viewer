@@ -11,9 +11,13 @@
   "scripts": {
     "assets": "bash scripts/fetch-assets.sh",
     "probe:step": "node research/probe-step.mjs",
-    "probe:truth": "node research/d8-ground-truth.mjs"
+    "probe:truth": "node research/d8-ground-truth.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "occt-import-js": "^0.0.23"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
   }
 }
