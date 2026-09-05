@@ -47,10 +47,13 @@ export default {
     {
       name: "no-accessor-to-accessor",
       comment:
-        "Accessors are leaf I/O and hold no logic; they must not depend on each other.",
+        "Accessors are leaf I/O and hold no logic; they must not depend on each other. Implementing the layer's own public contract (ModelSource, ModelCacheAccessor) is not the same thing as depending on a sibling Accessor, so those files are exempt — see DECISIONS.md.",
       severity: "error",
       from: { path: "^src/accessor/" },
-      to: { path: "^src/accessor/" },
+      to: {
+        path: "^src/accessor/",
+        pathNot: "^src/accessor/(ModelSource|ModelCacheAccessor)\\.ts$",
+      },
     },
     {
       name: "no-common-outbound",
@@ -70,6 +73,13 @@ export default {
     },
   ],
   options: {
+    // Test files aren't part of the runtime layer graph the rules above
+    // enforce — a test legitimately reaches into whatever it exercises,
+    // regardless of layer. Excluding them here, once, beats adding a
+    // pathNot to every rule above.
+    exclude: {
+      path: "\\.test\\.ts$",
+    },
     // The layer rules only govern our own src/ tree. Without this,
     // dependency-cruiser also crawls every package a dependency pulls in
     // (e.g. one test importing "vitest" cruised 26 modules instead of the

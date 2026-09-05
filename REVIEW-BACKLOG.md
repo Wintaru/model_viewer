@@ -126,10 +126,13 @@ Blocking findings were fixed. These were not.
 - **`research/README.md` indexes 8 of 16 scripts** and omits the whole D9 phase.
   Still true, and now load-bearing: `CLAUDE.md` points at it for which scripts
   need numpy.
-- **Built-in sources are named two ways.** `SPEC.md` section 3 calls them
-  `BufferSourceAccessor` and `FileSourceAccessor`; section 7 and the commit
-  table call them `fromBuffer` and `fromFile`. Decide which is the class and
-  which is the factory before writing the files.
+- **Built-in sources are named two ways — resolved for `fromBuffer` in slice 1
+  commit 7.** `<Name>SourceAccessor` is the class implementing `ModelSource`;
+  `from<Name>` is the public factory function that constructs and returns
+  one, colocated in the same file (a separate `fromBuffer.ts` importing the
+  class would itself be a forbidden Accessor-to-Accessor edge — see
+  `DECISIONS.md`). `FileSourceAccessor`/`fromFile` (commit 8) and the slice 4
+  remote sources should follow the same split.
 - **`MeshDecodeEngine` scope.** Slice 1 hand-parses binary STL to avoid an
   Engine depending on three.js. OBJ, PLY, glTF and 3MF are still listed as v1
   formats and have no plan yet. Hand-parsing all of them is not obviously right;
