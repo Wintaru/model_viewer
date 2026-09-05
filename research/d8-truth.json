@@ -1,0 +1,317 @@
+{
+  "nist_ctc_01": {
+    "stepFile": "nist_ctc_01_asme1_rd.stp",
+    "triangles": 2828,
+    "vertices": 3008,
+    "min": [
+      -400,
+      -225,
+      -100
+    ],
+    "max": [
+      400,
+      225,
+      50
+    ],
+    "size": [
+      800,
+      450,
+      150
+    ],
+    "faces": 139
+  },
+  "nist_ctc_02": {
+    "stepFile": "nist_ctc_02_asme1_rc.stp",
+    "triangles": 23772,
+    "vertices": 20984,
+    "min": [
+      -340,
+      -40,
+      -360
+    ],
+    "max": [
+      340,
+      820,
+      40
+    ],
+    "size": [
+      680,
+      860,
+      400
+    ],
+    "faces": 664
+  },
+  "nist_ctc_03": {
+    "stepFile": "nist_ctc_03_asme1_rc.stp",
+    "triangles": 3226,
+    "vertices": 3432,
+    "min": [
+      -249.5611,
+      0,
+      0
+    ],
+    "max": [
+      53.4022,
+      485.4448,
+      162.6801
+    ],
+    "size": [
+      302.9633,
+      485.4448,
+      162.6801
+    ],
+    "faces": 139
+  },
+  "nist_ctc_04": {
+    "stepFile": "nist_ctc_04_asme1_rd.stp",
+    "triangles": 15840,
+    "vertices": 14802,
+    "min": [
+      -250,
+      0,
+      -100.6039
+    ],
+    "max": [
+      250,
+      780,
+      30
+    ],
+    "size": [
+      500,
+      780,
+      130.6039
+    ],
+    "faces": 518
+  },
+  "nist_ctc_05": {
+    "stepFile": "nist_ctc_05_asme1_rd.stp",
+    "triangles": 7589,
+    "vertices": 6989,
+    "min": [
+      -263.525,
+      -279.1479,
+      0
+    ],
+    "max": [
+      263.525,
+      279.1479,
+      482.6
+    ],
+    "size": [
+      527.05,
+      558.2958,
+      482.6
+    ],
+    "faces": 209
+  },
+  "nist_ftc_06": {
+    "stepFile": "nist_ftc_06_asme1_rd.stp",
+    "triangles": 8656,
+    "vertices": 7020,
+    "min": [
+      -152.4,
+      0,
+      -247.65
+    ],
+    "max": [
+      152.4,
+      97.79,
+      0
+    ],
+    "size": [
+      304.8,
+      97.79,
+      247.65
+    ],
+    "faces": 144
+  },
+  "nist_ftc_07": {
+    "stepFile": "nist_ftc_07_asme1_rd.stp",
+    "triangles": 8068,
+    "vertices": 7444,
+    "min": [
+      -155.803,
+      -123.19,
+      -111.353
+    ],
+    "max": [
+      155.803,
+      12.7,
+      111.353
+    ],
+    "size": [
+      311.6059,
+      135.89,
+      222.7059
+    ],
+    "faces": 269
+  },
+  "nist_ftc_08": {
+    "stepFile": "nist_ftc_08_asme1_rc.stp",
+    "triangles": 7106,
+    "vertices": 7012,
+    "min": [
+      -155.7973,
+      -111.3473,
+      0
+    ],
+    "max": [
+      155.7973,
+      111.3473,
+      48.26
+    ],
+    "size": [
+      311.5945,
+      222.6945,
+      48.26
+    ],
+    "faces": 270
+  },
+  "nist_ftc_09": {
+    "stepFile": "nist_ftc_09_asme1_rd.stp",
+    "triangles": 4892,
+    "vertices": 5068,
+    "min": [
+      -95.25,
+      0,
+      -139.7
+    ],
+    "max": [
+      95.25,
+      3.0378,
+      139.7
+    ],
+    "size": [
+      190.5,
+      3.0378,
+      279.4
+    ],
+    "faces": 158
+  },
+  "nist_ftc_10": {
+    "stepFile": "nist_ftc_10_asme1_rb.stp",
+    "triangles": 12784,
+    "vertices": 10619,
+    "min": [
+      -78.9887,
+      0,
+      -37.5
+    ],
+    "max": [
+      78.9887,
+      31,
+      37.5
+    ],
+    "size": [
+      157.9774,
+      31,
+      75
+    ],
+    "faces": 214
+  },
+  "nist_ftc_11": {
+    "stepFile": "nist_ftc_11_asme1_rb.stp",
+    "triangles": 5518,
+    "vertices": 3216,
+    "min": [
+      -31.4769,
+      -31.5,
+      -1.5
+    ],
+    "max": [
+      31.4769,
+      31.5,
+      1.4984
+    ],
+    "size": [
+      62.9538,
+      63,
+      2.9984
+    ],
+    "faces": 6
+  },
+  "nist_stc_06": {
+    "stepFile": "nist_stc_06_asme1_ap242-e3.stp",
+    "triangles": 8555,
+    "vertices": 6977,
+    "min": [
+      0,
+      -152.4,
+      0
+    ],
+    "max": [
+      247.65,
+      152.4,
+      97.79
+    ],
+    "size": [
+      247.65,
+      304.8,
+      97.79
+    ],
+    "faces": 144
+  },
+  "nist_stc_08": {
+    "stepFile": "nist_stc_08_asme1_ap242-e3.stp",
+    "triangles": 7102,
+    "vertices": 7010,
+    "min": [
+      -155.7973,
+      -111.3473,
+      0
+    ],
+    "max": [
+      155.7973,
+      111.3473,
+      48.26
+    ],
+    "size": [
+      311.5945,
+      222.6945,
+      48.26
+    ],
+    "faces": 271
+  },
+  "nist_stc_09": {
+    "stepFile": "nist_stc_09_asme1_ap242-e3.stp",
+    "triangles": 4892,
+    "vertices": 5002,
+    "min": [
+      -95.25,
+      0,
+      -139.7
+    ],
+    "max": [
+      95.25,
+      3.0378,
+      139.7
+    ],
+    "size": [
+      190.5,
+      3.0378,
+      279.4
+    ],
+    "faces": 125
+  },
+  "nist_stc_10": {
+    "stepFile": "nist_stc_10_asme1_ap242-e2.stp",
+    "triangles": 14704,
+    "vertices": 12001,
+    "min": [
+      0.0113,
+      0,
+      0
+    ],
+    "max": [
+      157.9887,
+      31,
+      75
+    ],
+    "size": [
+      157.9774,
+      31,
+      75
+    ],
+    "faces": 256
+  }
+}

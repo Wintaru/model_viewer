@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Test corpus — 75 MB of binary CAD files.
+# Fetch them with scripts/fetch-assets.sh. The README stays tracked, because it
+# records provenance and licensing for every file.
+assets/*
+!assets/README.md
+
+# Third-party CAD files that are not ours to publish.
+# demo/private holds output decoded from a real customer part: full geometry,
+# part numbers, and internal folder paths. It must never be committed.
+demo/private/
+
+# Claude's working decision log. Delete this line to track it.
+DECISIONS.md
+
+# Trillian per-repo settings
+.trillian-repo.json
+
+# Scratch
+*.log
+.DS_Store
+.playwright-mcp/
+mermaid-*.png

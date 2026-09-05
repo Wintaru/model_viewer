@@ -1,0 +1,86 @@
+# Review backlog
+
+Findings from the code review of the initial commit that were **not** fixed in
+it. Blocking defects were fixed; these are advisory and are recorded here so
+they are not rediscovered.
+
+Nothing here blocks build slice 1.
+
+## Applies to the research scripts
+
+These scripts are kept as an audit trail of how the SolidWorks format was
+decoded, so some duplication between them is deliberate. That does not make the
+defects below wrong, only lower priority.
+
+- **`recurse-sldprt.py` still has the unpatched inflate loop.** The other six
+  copies now use a `memoryview` and a shared byte budget. This one did not match
+  the patch pattern and was left alone. It has a 32 MB per-stream cap and no
+  aggregate cap.
+- **`hash()` used for stream deduplication** — `d9-decode.py`,
+  `d9-extract-mesh.py`, `d9-decode-tess.py`. Python's `hash()` on bytes is a
+  64-bit, per-process-randomised siphash, not an identity. A collision silently
+  drops a real stream. Use `hashlib.sha256`, or store the bytes. Note this only
+  removes *exact* duplicates: a stream that also appears inside a parent buffer
+  is still counted twice.
+- **Argument handling raises `IndexError` instead of printing usage.** Every
+  script documents a `Usage:` line and then indexes `sys.argv` directly.
+  `sldprt-triage.py` does it correctly; copy that guard.
+- **`d9-verify-cached.py` imports the decoder by splitting on a source string**
+  (`.split('src = pathlib.Path')[0]`). The intent is right — the verifier must
+  not drift from the decoder — but renaming a variable in `d9-decode.py` makes
+  the whole module execute with the wrong `sys.argv`. Move `decode_stream` and
+  its helpers behind `if __name__ == "__main__":` and import normally.
+- **`d8-ground-truth.mjs` swallows a parse error** (`catch { continue; }`). A
+  throwing STEP file vanishes from `d8-truth.json` with no output, which
+  silently changes the denominator in "6 of 11". One NIST file is known to throw
+  with the message `undefined`. Log the filename and the error.
+- **`new URL(...).pathname` breaks on paths with spaces, and on Windows** —
+  `d8-ground-truth.mjs`, `probe-step.mjs`. Use `fileURLToPath` from `node:url`.
+- **`d8-final.py` prints the same value under two headings.** The summary table
+  declares `STEP tri` and `need pts` and fills both from `tri`. Points needed is
+  presumably `tri * 3`, so the threshold is understated threefold.
+- **Crashes on empty or very small input** — `scan-deflate.py` divides by
+  `len(data)`, `probe-sldprt.py` calls `min()` on a possibly empty list,
+  `d9-map.py` indexes `kinds[0]`.
+- **`recurse-sldprt.py` builds a `leaves` list that is never read.**
+- **`d9-verify.py` leaks a temp file if `json.loads` throws.** Use `try/finally`.
+
+## Applies to the demo
+
+- **three.js r128 loads from cdnjs with no `integrity` attribute**, in
+  `build-demo.py` and the generated `viewer.html`. Add an SRI hash. r128 is also
+  several years old.
+
+## Applies to `scripts/fetch-assets.sh`
+
+- **Nothing is verified about what was downloaded.** No checksum, no size check,
+  no assertion on extracted file counts. Every research number in
+  `FINDINGS.md` and `d8-truth.json` assumes that exact corpus, so if NIST
+  reissues either archive the audit trail becomes unreproducible with no signal.
+  The script already computes the counts; turn them into assertions and record a
+  SHA-256 per archive.
+- **`find ... -exec cp` follows symlinks** in the extracted tree. Add `-type f`.
+
+## Documentation consistency
+
+- **The Utility roster is listed in three places** — `ARCHITECTURE.md` section 2,
+  `SPEC.md` section 3, and the ASCII layer map in `SPEC.md`. They already
+  disagree: `Hash` appears only in `ARCHITECTURE.md`, and it is load-bearing for
+  the cache key. Make one authoritative and have the others point at it.
+- **`research/README.md` indexes 8 of 16 scripts** and omits the entire D9
+  phase, which is the half that produced the working decoder and the demo. It
+  claims to be the audit trail, which is the stated reason the duplication is
+  kept, so an incomplete index costs most of that value.
+- **`SPEC.md` gives the wrong reason for scanning four byte alignments.** It says
+  SolidWorks changes its container between releases. The real reason is that
+  headers are not word-aligned *within a single file*.
+- **"Exactly" overstates the verification tolerance.** `SPEC.md` says 6 of 11
+  parts reproduce the box "exactly"; the check in `d9-verify-cached.py` allows
+  2 percent or 0.5 mm. `ARCHITECTURE.md` phrases it better.
+- **The SolidWorks 2020 claim is not reproducible from this repository.** All 11
+  tracked SLDPRT files are 2018. The 2020 result came from a third-party file
+  that is correctly gitignored. Say so, rather than leaving a claim nobody can
+  check.
+- **`sldprt-triage.py` cites a "9-part NIST corpus"** while `assets/README.md`
+  documents 11 SLDPRT files. Both are true — the bytes-per-triangle table covers
+  9 — but say "9 of the 11".

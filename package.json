@@ -1,0 +1,19 @@
+{
+  "name": "model-viewer-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Research and design for a browser CAD viewer library. The publishable library package arrives in build slice 1 (see SPEC.md).",
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "assets": "bash scripts/fetch-assets.sh",
+    "probe:step": "node research/probe-step.mjs",
+    "probe:truth": "node research/d8-ground-truth.mjs"
+  },
+  "dependencies": {
+    "occt-import-js": "^0.0.23"
+  }
+}
