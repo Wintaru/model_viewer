@@ -1,4 +1,5 @@
 export type { DecodedModel } from "./DecodedModel";
+export { createEmptyDecodedModel } from "./DecodedModel";
 export type { DecodedMesh } from "./DecodedMesh";
 export type { FaceRange } from "./FaceRange";
 export type { SceneNode } from "./SceneNode";

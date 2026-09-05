@@ -139,10 +139,10 @@ Blocking findings were fixed. These were not.
   glTF in particular is large. Revisit before slice 1 commit 10 grows.
   `FormatSniffEngine` (commit 9) recognizes both ASCII and binary STL under
   one `'stl'` id, since telling a decoder "this is some kind of STL" is a
-  reasonable sniff-level answer regardless of which variant is implemented —
-  but if this bullet's binary-only scope stands, commit 10 needs to report an
-  ASCII STL file as unsupported (a `Diagnostic`, not a crash) rather than
-  silently mis-parsing it.
+  reasonable sniff-level answer regardless of which variant is implemented.
+  **Resolved for the ASCII case in commit 10:** `MeshDecodeEngine` reports
+  an `ascii-stl-unsupported` error `Diagnostic` rather than mis-parsing it.
+  OBJ/PLY/glTF/3MF are still unimplemented and undetected either way.
 - **`FormatSniffEngine` does not detect IGES.** The `ISO-10303-21;` header it
   checks is STEP's; real IGES files use fixed-width 80-column card records
   with a section letter at column 73, an unrelated and more involved check.
@@ -157,3 +157,17 @@ Blocking findings were fixed. These were not.
   read. ASCII STL is unaffected. Not clearly fixable without either reading
   more of the file (defeating part of the fast path) or giving `transform`
   the total byte length as a second, separate signal.
+
+## From building slice 1 commit 11 — ModelLoadManager (2026-09-05)
+
+- **The public loader is named two ways.** `SPEC.md` section 7a's public API
+  sketch imports `ModelLoader` (`import { ModelLoader, fromUrl } from
+  '@scope/cad-viewer'; const loader = new ModelLoader();`), but section 3's
+  layer map, the build-order table, and `ARCHITECTURE.md` all name the
+  component `ModelLoadManager` — which is what slice 1 commit 11 actually
+  built, since that is the name the build-order table gives it. Same
+  unresolved-naming shape as the `fromBuffer`/`BufferSourceAccessor` item
+  above: decide before commit 12 ("Build tooling + exports map") whether
+  `ModelLoadManager` is re-exported under the friendlier public name
+  `ModelLoader`, renamed outright, or the sketch in `SPEC.md` is the one
+  that's wrong.

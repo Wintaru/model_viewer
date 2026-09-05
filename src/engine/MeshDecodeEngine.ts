@@ -1,5 +1,8 @@
 import type { DecodedMesh } from "../common/DecodedMesh";
-import type { DecodedModel } from "../common/DecodedModel";
+import {
+  createEmptyDecodedModel,
+  type DecodedModel,
+} from "../common/DecodedModel";
 import type { Diagnostic } from "../common/Diagnostic";
 import { startsWithAsciiCaseInsensitive } from "../utility/AsciiUtil";
 import {
@@ -36,17 +39,18 @@ export class MeshDecodeEngine {
       return decodeBinaryStl(bytes, triangleCount);
     }
     if (startsWithAsciiCaseInsensitive(bytes, "solid")) {
-      return emptyResult(
-        "error",
-        "ascii-stl-unsupported",
-        "This looks like ASCII STL, which is not yet supported — only binary STL decodes in this version.",
-      );
+      return createEmptyDecodedModel({
+        severity: "error",
+        code: "ascii-stl-unsupported",
+        message:
+          "This looks like ASCII STL, which is not yet supported — only binary STL decodes in this version.",
+      });
     }
-    return emptyResult(
-      "error",
-      "invalid-stl",
-      "Bytes do not match a supported STL layout.",
-    );
+    return createEmptyDecodedModel({
+      severity: "error",
+      code: "invalid-stl",
+      message: "Bytes do not match a supported STL layout.",
+    });
   }
 }
 
@@ -109,19 +113,5 @@ function unitsAssumedDiagnostic(): Diagnostic {
     code: "units-assumed-mm",
     message:
       "STL carries no unit information. Values are reported as millimetres by assumption, not measurement.",
-  };
-}
-
-function emptyResult(
-  severity: Diagnostic["severity"],
-  code: string,
-  message: string,
-): DecodedModel {
-  return {
-    units: "mm",
-    meshes: [],
-    tree: [],
-    metadata: {},
-    diagnostics: [{ severity, code, message }],
   };
 }

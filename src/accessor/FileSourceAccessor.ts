@@ -7,9 +7,10 @@ import type { ModelSource } from "./ModelSource";
  * Accessor-to-Accessor edge.
  *
  * `readRange`/`stream` are not implemented here, even though `Blob.slice()`
- * could support them cheaply — deferred until `ModelLoadManager`'s
- * sniff-first path (commit 11) exists to exercise and shape them, rather
- * than guessing at behaviour nothing consumes yet.
+ * could support them cheaply — deferred until the sniff-first path actually
+ * uses a `readRange`-capable source, which needs `UrlSourceAccessor` /
+ * `ResponseSourceAccessor` (SPEC.md section 10, slice 4), not commit 11's
+ * `ModelLoadManager`. Rather than guess at behaviour nothing consumes yet.
  */
 export class FileSourceAccessor implements ModelSource {
   readonly name?: string;
