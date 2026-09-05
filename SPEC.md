@@ -365,6 +365,47 @@ Each slice is independently shippable.
 1. **Core plus mesh formats.** Neutral model, `ModelLoadManager`,
    `FormatSniffEngine`, buffer and file Accessors, `MeshDecodeEngine`, the
    three adapter. Smallest useful library, and it proves the shape.
+
+   Broken down to commits. Each row's "leaves green" claim was checked by
+   running the tool, not by assuming — four earlier rows were wrong.
+
+   | # | Commit | Leaves green because |
+   | --- | --- | --- |
+   | 1 | `tsconfig.json`, `src/index.ts` (`export {}`), package scripts | **`src/index.ts` is required here.** `tsc` exits 2 with TS18003 when `include: ["src"]` matches nothing, and git cannot track an empty directory, so a placeholder entry point is the only way commit 1 is green after a fresh clone. |
+   | 2 | ESLint + Prettier config **and `.prettierignore`** | `prettier --check .` fails on 13 tracked files without it. Generated artifacts (`demo/viewer.html`, `demo/nist-ctc-01.json`, `research/d8-truth.json`) must be ignored, or a reformatted copy stops matching a regenerated one and the audit trail breaks. Markdown is excluded too: these documents are hand-wrapped deliberately. |
+   | 3 | `dependency-cruiser` layer rules | `src/` exists from commit 1, so `depcruise src` resolves. Rules must classify `Common`, or the guard passes vacuously over the one module every layer imports. |
+   | 4 | Vitest config + one smoke test | the smoke test passes |
+   | 5 | `Common`: `DecodedModel` and friends | types only, no runtime |
+   | 6 | `Accessor`: `ModelSource` interface | interface only |
+   | 7 | `Accessor`: `fromBuffer` + tests | tests ship with the code |
+   | 8 | `Accessor`: `fromFile` + tests | same |
+   | 9 | `Engine`: `FormatSniffEngine` + tests | same |
+   | 10 | `Engine`: `MeshDecodeEngine`, **STL parsed by hand** + tests | no `three` dependency — see below |
+   | 11 | `Manager`: `ModelLoadManager` + tests | calls Engines **directly**; `ModuleRegistry`, `WorkerTransport` and the Engine proxies arrive in slice 2 |
+   | 12 | Build tooling + `exports` map | needed before a second entry point can exist |
+   | 13 | three.js adapter at `/three` (adds the `three` dependency) | consumes the neutral model |
+   | 14 | Library demo, **added beside the existing one** | see below |
+
+   **Why STL is parsed by hand.** Routing mesh formats through three.js loaders
+   would make an Engine depend on the renderer, and the renderer is one of the
+   three volatile edges this architecture exists to isolate (section 2). Binary
+   STL is a fixed 50-byte record; parsing it directly is smaller than the
+   dependency. `three` enters the package only at commit 13, in the adapter.
+
+   **Why the demo is added, not replaced.** `demo/viewer.html` and its
+   screenshots are the committed evidence for the SolidWorks claim, and they
+   come from the Python path. Slice 1 decodes STL only, so replacing the demo
+   here would leave the repository showing a 3DBenchy and no SolidWorks proof at
+   all. Retire the Python path in slice 3, once the TypeScript decoder
+   reproduces `demo/nist-ctc-01.json` byte for byte — which is a useful port
+   test in its own right.
+
+   **Commit 14 is a smoke demo, not the designed viewer.** It proves the library
+   loads a file end to end. The viewer's actual shape is decision D7, still open.
+
+   Later slices get the same treatment when they are reached. Do not break them
+   down in advance: the plan will be wrong by the time you get there.
+
 2. **STEP and IGES.** `OcctDecodeEngine` behind the worker proxy, plus
    `WasmAssetAccessor` and the lazy import. Proves the packaging decision.
 3. **SolidWorks.** Port `research/d9-decode.py` to TypeScript. Parts first,
