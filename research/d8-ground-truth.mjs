@@ -2,16 +2,16 @@
 // For each NIST part, read its STEP twin and record triangle count and
 // bounding box. The SLDPRT files hold the SAME parts, so these numbers are
 // the fingerprint we look for inside the SolidWorks container.
-import occtimportjs from 'occt-import-js';
-import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import occtimportjs from "occt-import-js";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
-const STEP_DIR = new URL('../assets/step/', import.meta.url).pathname;
+const STEP_DIR = new URL("../assets/step/", import.meta.url).pathname;
 const occt = await occtimportjs();
 
 // Part key -> the STEP variant to trust. Prefer the plain rb/rc/rd files:
 // they are the smallest and parsed cleanest in the earlier probe.
-const files = readdirSync(STEP_DIR).filter((f) => f.endsWith('.stp'));
+const files = readdirSync(STEP_DIR).filter((f) => f.endsWith(".stp"));
 const byPart = new Map();
 for (const f of files) {
   const key = f.match(/^(nist_(?:ctc|ftc|stc)_\d+)/)?.[1];
@@ -59,12 +59,12 @@ for (const [part, { file }] of [...byPart].sort()) {
   console.log(
     `${part.padEnd(14)} ${String(tri).padStart(6)} tri  ` +
       `${String(vertexCount).padStart(6)} vert  ` +
-      `bbox ${size.map((v) => v.toFixed(1).padStart(7)).join(' x ')}  (${file})`
+      `bbox ${size.map((v) => v.toFixed(1).padStart(7)).join(" x ")}  (${file})`,
   );
 }
 
 writeFileSync(
-  new URL('./d8-truth.json', import.meta.url).pathname,
-  JSON.stringify(truth, null, 2)
+  new URL("./d8-truth.json", import.meta.url).pathname,
+  JSON.stringify(truth, null, 2),
 );
 console.log(`\nWrote ground truth for ${Object.keys(truth).length} parts.`);

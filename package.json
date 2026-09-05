@@ -12,12 +12,20 @@
     "assets": "bash scripts/fetch-assets.sh",
     "probe:step": "node research/probe-step.mjs",
     "probe:truth": "node research/d8-ground-truth.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --check ."
   },
   "dependencies": {
     "occt-import-js": "^0.0.23"
   },
   "devDependencies": {
-    "typescript": "^7.0.2"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.10.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.69.0"
   }
 }

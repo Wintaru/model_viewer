@@ -10,6 +10,8 @@ assets/*
 # Third-party CAD files that are not ours to publish.
 # demo/private holds output decoded from a real customer part: full geometry,
 # part numbers, and internal folder paths. It must never be committed.
+# ESLint's flat config does not read this file, so eslint.config.js repeats
+# this entry in its own `ignores` — keep the two in sync.
 demo/private/
 
 # Claude's working decision log. Delete this line to track it.

@@ -1,0 +1,16 @@
+# Prettier reads .gitignore automatically, so gitignored paths (node_modules/,
+# demo/private/, .playwright-mcp/) don't need repeating here. Everything below
+# is tracked but still must not be reformatted.
+
+# Machine-generated; pnpm owns its formatting.
+pnpm-lock.yaml
+
+# Generated artifacts. A reformatted copy would stop matching a regenerated
+# one, and the audit trail (see research/FINDINGS.md) depends on byte-for-byte
+# comparison.
+demo/viewer.html
+demo/nist-ctc-01.json
+research/d8-truth.json
+
+# Hand-wrapped deliberately.
+*.md
