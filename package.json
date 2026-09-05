@@ -32,7 +32,8 @@
     "lint": "eslint . && depcruise src",
     "format": "prettier --check .",
     "test": "vitest run",
-    "build": "tsc --project tsconfig.build.json"
+    "build": "tsc --project tsconfig.build.json",
+    "build:demo": "node scripts/build-library-demo.mjs"
   },
   "dependencies": {
     "occt-import-js": "^0.0.23",
@@ -42,6 +43,7 @@
     "@eslint/js": "^10.0.1",
     "@types/three": "^0.185.4",
     "dependency-cruiser": "^18.2.0",
+    "esbuild": "^0.28.2",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.12.0",

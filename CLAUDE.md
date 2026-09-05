@@ -78,5 +78,7 @@ slice 1.
 Research scripts are Python 3; `research/README.md` records which need numpy.
 Node scripts need `pnpm install` first.
 
-The demo is currently a single self-contained file: open `demo/viewer.html`
-directly, no server needed.
+Two demos, both self-contained files you open directly (no server needed):
+`demo/viewer.html` (the SolidWorks decode, Python-built) and
+`demo/library-demo.html` (the TypeScript library end to end, `pnpm run
+build:demo` to rebuild its bundle). See `demo/README.md`.

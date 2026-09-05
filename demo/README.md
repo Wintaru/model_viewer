@@ -1,5 +1,9 @@
 # Demo
 
+Two demos live here, and they prove different things.
+
+## `viewer.html` — the SolidWorks decode
+
 A self-contained page that renders a SolidWorks part in a browser, with no
 SolidWorks, no Parasolid and no vendor SDK. Open `viewer.html` directly — the
 geometry is inlined, so it works from `file://` with no server.
@@ -12,6 +16,36 @@ python3 research/d9-decode.py \
   assets/solidworks/nist_ctc_01_asme1_rd_sw1802.SLDPRT demo/nist-ctc-01.json
 python3 research/build-demo.py demo/nist-ctc-01.json demo/viewer.html
 ```
+
+This is the Python-path proof and stays until slice 3's TypeScript
+SolidWorks decoder can reproduce `nist-ctc-01.json` byte for byte — see
+`SPEC.md` section 10.
+
+## `library-demo.html` — the TypeScript library, end to end
+
+Slice 1 commit 14's smoke demo: proves `ModelLoader` (`@wintaru/part-viewer`)
+and `toThree` (`@wintaru/part-viewer/three`) work together in a real
+browser, not just under Vitest. It decodes a small hand-built binary STL (a
+cube — no test corpus needed) and renders it with three.js. This is
+deliberately not the designed viewer: the actual UI is decision D7, still
+open in `WAYFINDER.md`.
+
+Open `library-demo.html` directly for the same reason `viewer.html` needs no
+server: everything is bundled into one classic script,
+`library-demo.bundle.js`, with no `import` statements left in it. A
+`<script type="module">` referencing `../src/index.ts` would fail to load
+over `file://` in every major browser — each cross-file module fetch is
+blocked as cross-origin there — which is exactly the constraint that makes
+`viewer.html` inline its geometry instead of fetching it.
+
+Rebuild the bundle with:
+
+```
+pnpm run build:demo
+```
+
+This bundles `library-demo.ts` straight from `src/` (not from `dist/`), so
+it doesn't need `pnpm run build` first.
 
 ## Screenshots
 

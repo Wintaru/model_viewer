@@ -10,6 +10,7 @@ pnpm-lock.yaml
 # comparison.
 demo/viewer.html
 demo/nist-ctc-01.json
+demo/library-demo.bundle.js
 research/d8-truth.json
 
 # Hand-wrapped deliberately.

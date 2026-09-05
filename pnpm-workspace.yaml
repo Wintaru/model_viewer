@@ -1,0 +1,8 @@
+# allowBuilds is the key that actually does something on pnpm 11.20.0 —
+# onlyBuiltDependencies (the more commonly documented name, and what earlier
+# pnpm major versions used) is silently inert here. Verified empirically:
+# onlyBuiltDependencies alone still leaves esbuild's postinstall skipped
+# (ERR_PNPM_IGNORED_BUILDS); allowBuilds alone is sufficient. See
+# DECISIONS.md — don't "clean this up" to just onlyBuiltDependencies.
+allowBuilds:
+  esbuild: true

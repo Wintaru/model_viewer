@@ -169,3 +169,21 @@ Blocking findings were fixed. These were not.
   surface — a caller of the published package has no reason to know iDesign
   layer vocabulary. `SPEC.md`'s sketch was already right; nothing there
   needed to change.
+
+## From building slice 1 commit 14 — the library smoke demo (2026-09-05)
+
+- **Nothing exercises the actual published `dist/` output.** `package.json`'s
+  `exports` map points a consumer at `./dist/index.js` /
+  `./dist/three/index.js`, but both `vitest` and `demo/library-demo.ts`
+  (bundled by `scripts/build-library-demo.mjs`) import straight from `src/`.
+  `pnpm run build` type-checks and emits `dist/`, but nothing then runs
+  that output — so a real divergence between source behaviour and compiled
+  behaviour (for example the already-known-and-accepted gap that `dist/`
+  doesn't resolve under plain Node's ESM loader, see `DECISIONS.md`'s
+  commit-12 entry) would only surface for an actual downstream consumer,
+  never in this repo's own checks. Cheapest fix if this is ever worth
+  closing: point `scripts/build-library-demo.mjs`'s `entryPoints` at
+  `dist/index.js` / `dist/three/index.js` instead of `src/`, after a
+  `pnpm run build` — traded away in commit 14 specifically so the demo
+  bundler has one less prerequisite step, not because the gap doesn't
+  matter.
