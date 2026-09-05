@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "occt-import-js": "^0.0.23",
+    "pako": "^3.0.1",
     "three": "^0.185.1"
   },
   "devDependencies": {
