@@ -160,14 +160,12 @@ Blocking findings were fixed. These were not.
 
 ## From building slice 1 commit 11 — ModelLoadManager (2026-09-05)
 
-- **The public loader is named two ways.** `SPEC.md` section 7a's public API
-  sketch imports `ModelLoader` (`import { ModelLoader, fromUrl } from
-  '@scope/cad-viewer'; const loader = new ModelLoader();`), but section 3's
-  layer map, the build-order table, and `ARCHITECTURE.md` all name the
-  component `ModelLoadManager` — which is what slice 1 commit 11 actually
-  built, since that is the name the build-order table gives it. Same
-  unresolved-naming shape as the `fromBuffer`/`BufferSourceAccessor` item
-  above: decide before commit 12 ("Build tooling + exports map") whether
-  `ModelLoadManager` is re-exported under the friendlier public name
-  `ModelLoader`, renamed outright, or the sketch in `SPEC.md` is the one
-  that's wrong.
+- **The public loader is named two ways — resolved in slice 1 commit 12.**
+  `SPEC.md` section 7a's public API sketch imports `ModelLoader`, while
+  section 3's layer map, the build-order table, and `ARCHITECTURE.md` all
+  name the component `ModelLoadManager`. Kept `ModelLoadManager` as the
+  internal class (matches the layer-suffix convention every other Manager
+  uses), and `src/index.ts` re-exports it as `ModelLoader` for the public
+  surface — a caller of the published package has no reason to know iDesign
+  layer vocabulary. `SPEC.md`'s sketch was already right; nothing there
+  needed to change.

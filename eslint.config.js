@@ -6,9 +6,10 @@ import globals from "globals";
 export default tseslint.config(
   {
     // Flat config does not read .gitignore, so demo/private/ (decoded
-    // third-party CAD output — see the comment in .gitignore) is repeated
-    // here by hand. Keep the two in sync.
-    ignores: ["node_modules/", "demo/private/", ".playwright-mcp/"],
+    // third-party CAD output — see the comment in .gitignore) and dist/
+    // (build output, commit 12) are repeated here by hand. Keep the two in
+    // sync.
+    ignores: ["node_modules/", "demo/private/", ".playwright-mcp/", "dist/"],
   },
   js.configs.recommended,
   {

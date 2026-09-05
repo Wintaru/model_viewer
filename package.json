@@ -1,13 +1,25 @@
 {
-  "name": "model-viewer-workspace",
+  "name": "@wintaru/part-viewer",
   "version": "0.0.0",
   "private": true,
-  "description": "Research and design for a browser CAD viewer library. The publishable library package arrives in build slice 1 (see SPEC.md).",
+  "description": "Renders engineering CAD files in the browser: STEP/IGES, native SolidWorks parts, mesh formats, and DXF. Conversion runs entirely on the client.",
   "type": "module",
   "packageManager": "pnpm@11.20.0",
   "engines": {
     "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
   "scripts": {
     "assets": "bash scripts/fetch-assets.sh",
     "probe:step": "node research/probe-step.mjs",
@@ -15,7 +27,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && depcruise src",
     "format": "prettier --check .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "tsc --project tsconfig.build.json"
   },
   "dependencies": {
     "occt-import-js": "^0.0.23"

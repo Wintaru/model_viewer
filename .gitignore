@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Build output (commit 12: tsc --project tsconfig.build.json)
+dist/
+
 # Test corpus — 75 MB of binary CAD files.
 # Fetch them with scripts/fetch-assets.sh. The README stays tracked, because it
 # records provenance and licensing for every file.

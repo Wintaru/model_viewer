@@ -309,8 +309,8 @@ Same result, one less optimisation.
 ## 7a. Public API sketch
 
 ```ts
-import { ModelLoader, fromUrl } from '@scope/cad-viewer';
-import { toThree } from '@scope/cad-viewer/three';
+import { ModelLoader, fromUrl } from '@wintaru/part-viewer';
+import { toThree } from '@wintaru/part-viewer/three';
 
 const loader = new ModelLoader();
 
@@ -343,8 +343,8 @@ for a library other people embed is disqualifying.
 Entry points:
 
 ```
-@scope/cad-viewer          core: loader, sniffer, neutral model
-@scope/cad-viewer/three    three.js adapter
+@wintaru/part-viewer          core: loader, sniffer, neutral model
+@wintaru/part-viewer/three    three.js adapter (arrives in slice 1 commit 13)
 ```
 
 The accepted cost is bundler sensitivity: a `.wasm` asset has to be emitted and
