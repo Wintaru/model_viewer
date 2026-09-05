@@ -92,9 +92,22 @@ Blocking findings were fixed. These were not.
 - **The layer rules now live in four places** — the `ARCHITECTURE.md` section 2
   table, prose in `SPEC.md`, the ASCII map in `SPEC.md`, and `CLAUDE.md`.
   `CLAUDE.md` now points at the table instead of restating it, and the table is
-  declared authoritative, but the two `SPEC.md` copies remain. The real fix is
-  the `dependency-cruiser` config from slice 1 commit 3: once it exists it is the
-  executable copy, and the prose copies should be reduced to a pointer.
+  declared authoritative. Slice 1 commit 3 added `.dependency-cruiser.js` as
+  the executable copy, and `SPEC.md`'s prose restatement of the allow/forbid
+  rules now points at the table instead of repeating it. The ASCII layer map
+  in `SPEC.md` section 3 still duplicates the folder structure, but it draws
+  the layer hierarchy, not the allow/forbid rules — lower priority, and
+  coupled to the separate "diagrams in Mermaid, not ASCII" cleanup, not to
+  this guard. Several standalone restatements of individual forbidden edges
+  also remain in `SPEC.md` section 3 prose ("Manager must never call
+  Manager", "Accessor-to-Engine is forbidden", etc.) — not new drift, but
+  worth folding into this same cleanup if it's revisited.
+- **`.dependency-cruiser.js` has no regression fixture of its own.** It was
+  hand-verified once (scratch files under each layer folder, deleted before
+  commit) but nothing catches a future typo in the ruleset — a dropped `/` or
+  a wrong alternation member — before it either silently stops catching a
+  real violation or starts flagging legitimate code. Worth a small fixture
+  test once Vitest lands in commit 4.
 - **The verify story lives in three places** — `.trillian-repo.json` (the
   executable source), `CLAUDE.md`, and `SPEC.md`. Now declared authoritative in
   one place, but the copies still exist.

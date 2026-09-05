@@ -13,7 +13,7 @@
     "probe:step": "node research/probe-step.mjs",
     "probe:truth": "node research/d8-ground-truth.mjs",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint . && depcruise src",
     "format": "prettier --check ."
   },
   "dependencies": {
@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "dependency-cruiser": "^18.2.0",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.12.0",

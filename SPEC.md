@@ -57,8 +57,9 @@ Utility   worker transport, module registry, typed-array helpers,
           deflate helper, logging
 ```
 
-Allowed calls only, per the standard: Client to Manager; Manager to Engine and
-Accessor; Engine to Accessor; anything to Utility; Utility to nothing.
+The full allow/forbid table lives in `ARCHITECTURE.md` section 2 — that copy is
+authoritative. `.dependency-cruiser.js` is its executable form: a
+boundary-crossing import fails `depcruise src` instead of only living in prose.
 
 ### Client
 
