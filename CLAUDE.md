@@ -70,8 +70,8 @@ slice 1 is a smoke demo only; the viewer's real shape is D7 and still open.
 ## Verify
 
 The commands live in `.trillian-repo.json` and that file is authoritative for
-them. They do not exist yet: the toolchain arrives in the first commits of
-slice 1.
+them. Run them all at once with `pnpm run verify` (typecheck, lint, format,
+test, in that order — matches `.trillian-repo.json`'s `verify` block).
 
 ## Running things
 

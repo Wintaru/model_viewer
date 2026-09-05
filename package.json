@@ -33,7 +33,8 @@
     "format": "prettier --check .",
     "test": "vitest run",
     "build": "tsc --project tsconfig.build.json",
-    "build:demo": "node scripts/build-library-demo.mjs"
+    "build:demo": "node scripts/build-library-demo.mjs",
+    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run test"
   },
   "dependencies": {
     "occt-import-js": "^0.0.23",
