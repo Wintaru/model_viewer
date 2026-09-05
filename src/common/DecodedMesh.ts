@@ -9,5 +9,6 @@ export interface DecodedMesh {
   /** CAD identity — see {@link FaceRange}. */
   readonly faces: readonly FaceRange[];
   readonly name?: string;
+  /** sRGB, 0-1 per channel — see `toThree`'s `materialFor` in `src/three/index.ts`. */
   readonly color?: readonly [number, number, number];
 }

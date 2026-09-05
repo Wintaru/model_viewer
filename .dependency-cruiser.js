@@ -71,6 +71,14 @@ export default {
       from: { path: "^src/utility/" },
       to: { path: "^src/(common|manager|engine|accessor|utility)/" },
     },
+    {
+      name: "no-three-adapter-outbound",
+      comment:
+        "The /three adapter (SPEC.md section 7a, section 8) is a pure consumer of Common's neutral model, not a layer in the loading pipeline. It must not reach into Manager, Engine, Accessor or Utility — doing so would risk the reverse edge (the core entry point importing /three) sneaking in later, which is the exact bundle-size problem D10 exists to prevent.",
+      severity: "error",
+      from: { path: "^src/three/" },
+      to: { path: "^src/(manager|engine|accessor|utility)/" },
+    },
   ],
   options: {
     // Test files aren't part of the runtime layer graph the rules above

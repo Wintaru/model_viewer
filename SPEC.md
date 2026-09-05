@@ -344,7 +344,7 @@ Entry points:
 
 ```
 @wintaru/part-viewer          core: loader, sniffer, neutral model
-@wintaru/part-viewer/three    three.js adapter (arrives in slice 1 commit 13)
+@wintaru/part-viewer/three    three.js adapter
 ```
 
 The accepted cost is bundler sensitivity: a `.wasm` asset has to be emitted and

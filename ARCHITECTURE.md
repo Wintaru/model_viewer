@@ -31,6 +31,14 @@ to change**, not by what they do.
 So decoders, sources and renderers are the replaceable edges. The orchestration
 and the model are the core, and the core never learns their names.
 
+The three.js adapter (`/three`, SPEC.md section 7a) sits outside the graph
+below entirely, rather than as a sixth layer: it depends only on the neutral
+model (Common), never on Manager, Engine or Accessor, so a caller doing
+headless work — thumbnails, measurement, export — never pulls in three.js
+(D10, SPEC.md section 8). `no-three-adapter-outbound` in
+`.dependency-cruiser.js` enforces this the same way the table below enforces
+everything else.
+
 ```mermaid
 flowchart TD
     subgraph L1["Client"]
@@ -84,6 +92,7 @@ nothing itself.
 | Manager to Engine, Manager to Accessor | Manager to Manager |
 | Engine to Accessor | Engine to Engine, Engine to Manager |
 | Anything to Utility | Accessor to anything but Utility |
+| `/three` adapter to Common (only) | `/three` adapter to Manager, Engine, Accessor or Utility |
 
 A layering rule that lives only in a document drifts, and it still compiles.
 These **will be** enforced with `dependency-cruiser`, so a boundary-crossing
