@@ -23,29 +23,66 @@ SolidWorks decoder can reproduce `nist-ctc-01.json` byte for byte — see
 
 ## `library-demo.html` — the TypeScript library, end to end
 
-Slice 1 commit 14's smoke demo: proves `ModelLoader` (`@wintaru/part-viewer`)
-and `toThree` (`@wintaru/part-viewer/three`) work together in a real
-browser, not just under Vitest. It decodes a small hand-built binary STL (a
-cube — no test corpus needed) and renders it with three.js. This is
-deliberately not the designed viewer: the actual UI is decision D7, still
-open in `WAYFINDER.md`.
+Slice 1 commit 14's smoke demo, extended in slice 2 commit 7: proves
+`ModelLoader` (`@wintaru/part-viewer`) and `toThree`
+(`@wintaru/part-viewer/three`) work together in a real browser, not just
+under Vitest. This is deliberately not the designed viewer: the actual UI
+is decision D7, still open in `WAYFINDER.md`.
 
-Open `library-demo.html` directly for the same reason `viewer.html` needs no
-server: everything is bundled into one classic script,
-`library-demo.bundle.js`, with no `import` statements left in it. A
-`<script type="module">` referencing `../src/index.ts` would fail to load
-over `file://` in every major browser — each cross-file module fetch is
-blocked as cross-origin there — which is exactly the constraint that makes
-`viewer.html` inline its geometry instead of fetching it.
+It proves two things, with two different delivery requirements:
 
-Rebuild the bundle with:
+- **The STL cube** — a small hand-built binary STL, no test corpus needed.
+  Open `library-demo.html` directly for the same reason `viewer.html` needs
+  no server: everything is bundled into one classic script,
+  `library-demo.bundle.js`, with no `import` statements left in it. A
+  `<script type="module">` referencing `../src/index.ts` would fail to load
+  over `file://` in every major browser — each cross-file module fetch is
+  blocked as cross-origin there — which is exactly the constraint that
+  makes `viewer.html` inline its geometry instead of fetching it.
+- **A real STEP file** (`nist-ftc-11.stp`) — proves the slice 2 packaging
+  decision: OCCT's `.wasm` fetched lazily, decoded off the main thread in a
+  real `Worker`. **This half needs the page served over http(s)** —
+  confirmed by hand in a real browser, not assumed: a `file://` page gets
+  an opaque origin, and constructing a `Worker` from one throws
+  immediately, whether it's a classic or a module worker, regardless of
+  whether the target script is same-directory or not. Opened directly over
+  `file://`, this half is caught and reported in the status text
+  ("STEP: skipped — …") rather than left as an uncaught rejection, so the
+  cube still works exactly as it always has.
+
+  Serve the `demo/` directory over http to see it work, for example:
+
+  ```
+  python3 -m http.server 8000 --directory demo
+  ```
+
+  then open `http://localhost:8000/library-demo.html`.
+
+Rebuild everything with:
 
 ```
 pnpm run build:demo
 ```
 
 This bundles `library-demo.ts` straight from `src/` (not from `dist/`), so
-it doesn't need `pnpm run build` first.
+it doesn't need `pnpm run build` first. It also bundles
+`src/engine/occt.worker.ts` separately into `demo/occt.worker.bundle.js` —
+a real consumer's bundler (Vite, webpack) would split that chunk out
+automatically by recognizing `new Worker(new URL(...))`
+(ARCHITECTURE.md section 4); this demo's plain esbuild script does it by
+hand instead — and copies `occt-import-js`'s `.wasm` binary plus its LGPL
+license texts (`license.occt-import-js.txt`, `license.occt.txt`) into
+`demo/`. All three are committed rather than gitignored, the same reason
+`library-demo.bundle.js` is: the demo works immediately after a fresh
+clone (plus a server, for the STEP half), with nothing to build first.
+
+`occt-import-js.wasm` is LGPL-2.1, same as the two license texts committed
+alongside it. LGPL-2.1 §6 requires the corresponding source be reachable,
+not just the license text: it's built from
+[kovacsv/occt-import-js](https://github.com/kovacsv/occt-import-js), which
+in turn embeds [Open CASCADE Technology](https://dev.opencascade.org/) —
+this repository does not fork or modify either, only redistributes the
+former's published `dist/occt-import-js.wasm` build unchanged.
 
 ## Screenshots
 
@@ -64,8 +101,9 @@ Separating annotation geometry from part geometry is open work, tracked in
 
 ## Why the demo uses a NIST part
 
-The corpus NIST publishes may be used without restriction, so the decoded
-geometry is safe to commit. Output decoded from any third-party file belongs in
+The corpus NIST publishes may be used without restriction, so both the
+decoded geometry and the raw STEP source file (`nist-ftc-11.stp`) are safe
+to commit. Output decoded from any third-party file belongs in
 `demo/private/`, which is gitignored: a decoded model contains the full
 geometry of the part, and SolidWorks files also carry customer paths, user
 names and part numbers in plaintext.

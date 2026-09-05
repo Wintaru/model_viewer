@@ -1,27 +1,53 @@
 /**
- * Slice 1 commit 14 smoke demo: proves `ModelLoader` and `toThree` work
- * together end to end, in a real browser — not just under Vitest. See
- * SPEC.md section 10: "a smoke demo, not the designed viewer." The actual
- * viewer UI is decision D7, still open (WAYFINDER.md).
+ * Slice 1 commit 14's smoke demo, extended in slice 2 commit 7: proves
+ * `ModelLoader` and `toThree` work together end to end, in a real browser —
+ * not just under Vitest. See SPEC.md section 10: "a smoke demo, not the
+ * designed viewer." The actual viewer UI is decision D7, still open
+ * (WAYFINDER.md).
  *
- * Self-contained: the geometry below is a hand-built binary STL, not a
- * fetched file, so this demo needs no test corpus and no `pnpm assets`.
+ * Two separate proofs, with two different delivery constraints:
+ *
+ * - The STL cube is self-contained (hand-built bytes, no fetch) and needs
+ *   no Worker, so it still works opened directly over `file://`, same as
+ *   before commit 7.
+ * - The STEP part (`nist-ftc-11.stp`, NIST's, usable without restriction —
+ *   see demo/README.md) proves the slice 2 packaging decision: a real
+ *   `.wasm` chunk fetched lazily, decoded off the main thread. That needs
+ *   both `fetch` and `Worker`, and a real browser flatly refuses to
+ *   construct a Worker at all from a `file://` page — confirmed by hand,
+ *   not assumed; see DECISIONS.md — so this half only works served over
+ *   http(s). Caught and reported in the status text rather than left as an
+ *   uncaught rejection, so opening this file directly still shows the cube
+ *   working exactly as it always has.
+ *
  * Bundled to library-demo.bundle.js by scripts/build-library-demo.mjs into a
  * classic, non-module script — a `<script type="module">` fails to load
  * over `file://` in every major browser (each cross-file import is blocked
  * as cross-origin), which is why demo/viewer.html takes the same
- * everything-inlined approach.
+ * everything-inlined approach. occt.worker.ts is bundled separately, by the
+ * same script, into demo/occt.worker.bundle.js: see that script's comments.
  */
 import {
   AmbientLight,
   DirectionalLight,
+  Group,
   PerspectiveCamera,
   Scene,
   WebGLRenderer,
   type Object3D,
 } from "three";
-import { fromBuffer, ModelLoader } from "../src/index";
+import {
+  fromBuffer,
+  ModelLoader,
+  ModuleRegistry,
+  type StepDecoder,
+} from "../src/index";
+import { OcctDecodeEngineProxy } from "../src/engine/OcctDecodeEngineProxy";
 import { toThree } from "../src/three/index";
+
+const STEP_WASM_URL = "occt-import-js.wasm";
+const STEP_WORKER_URL = "occt.worker.bundle.js";
+const STEP_FILE_URL = "nist-ftc-11.stp";
 
 interface Triangle {
   readonly normal: readonly [number, number, number];
@@ -155,10 +181,82 @@ function animate(
   renderer.render(scene, camera);
 }
 
+/**
+ * The STEP half of the demo's dispatch config. Constructing
+ * `OcctDecodeEngineProxy` directly, rather than passing the plain wasm URL
+ * string `ModelLoader`'s constructor also accepts (SPEC.md section 10
+ * slice 2, commit 6), is demo-specific: this build has no bundler that
+ * automatically rewrites `new Worker(new URL(...))` to point at wherever
+ * it emits a split worker chunk (unlike Vite or webpack, which is exactly
+ * what lets a real consumer just pass a URL and stop there). Here, that
+ * rewriting is done by hand in scripts/build-library-demo.mjs, so the demo
+ * has to point `createWorker` at the bundle's own output filename instead
+ * of relying on the default.
+ */
+function createStepDecoders(): ModuleRegistry<"step", StepDecoder> {
+  return new ModuleRegistry<"step", StepDecoder>({
+    step: () =>
+      Promise.resolve(
+        new OcctDecodeEngineProxy(
+          STEP_WASM_URL,
+          () => new Worker(STEP_WORKER_URL, { type: "module" }),
+        ),
+      ),
+  });
+}
+
+/**
+ * Loads `nist-ftc-11.stp` and adds it to `spinning`, offset so it doesn't
+ * overlap the cube. Reports the outcome by appending to `status` rather
+ * than replacing it, so the cube's own line stays visible either way.
+ *
+ * Failure here is expected, not a bug, when this file is opened directly
+ * (`file://`): both `fetch`-ing the STEP file and constructing the Worker
+ * this needs throw immediately from an opaque `file://` origin — measured
+ * by hand in a real browser, not assumed (DECISIONS.md). Caught here so
+ * that case reports clearly instead of surfacing as an uncaught rejection
+ * that would also blank out the cube's already-working status line.
+ */
+async function loadStepPart(
+  loader: ModelLoader,
+  spinning: Group,
+  status: HTMLElement,
+): Promise<void> {
+  try {
+    const response = await fetch(STEP_FILE_URL);
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const model = await loader.load(fromBuffer(bytes, "nist-ftc-11.stp"));
+
+    if (model.diagnostics.some((d) => d.severity === "error")) {
+      status.textContent += `\nSTEP: ${model.diagnostics.map((d) => `${d.severity}: ${d.message}`).join("; ")}`;
+      return;
+    }
+
+    const object = toThree(model);
+    object.position.set(150, 0, 0);
+    spinning.add(object);
+    status.textContent += `\nSTEP: loaded ${model.meshes.length} mesh(es), ${model.tree.length} scene node(s).`;
+  } catch (error) {
+    // Diagnosed by the page's own protocol, not guessed from the fact that
+    // something threw — over http(s), a thrown error here is a real
+    // regression (a missing asset, a genuine decode failure), and
+    // reporting the confident "needs http(s)" message anyway would send a
+    // future debugger looking in the wrong place.
+    const reason =
+      location.protocol === "file:"
+        ? "this half needs the page served over http(s), not opened as a file:// path"
+        : "unexpected failure";
+    status.textContent += `\nSTEP: skipped — ${reason}. (${String(error)})`;
+  }
+}
+
 async function main(): Promise<void> {
   const status = statusElement();
 
-  const loader = new ModelLoader();
+  const loader = new ModelLoader(undefined, undefined, createStepDecoders());
   const stl = fromBuffer(binaryStl(CUBE_TRIANGLES), "smoke-cube.stl");
   const model = await loader.load(stl);
 
@@ -168,11 +266,12 @@ async function main(): Promise<void> {
       .join("\n");
     return;
   }
-  status.textContent = `Loaded ${model.meshes.length} mesh(es), ${model.tree.length} scene node(s).`;
+  status.textContent = `STL: loaded ${model.meshes.length} mesh(es), ${model.tree.length} scene node(s).`;
 
   const scene = new Scene();
-  const object = toThree(model);
-  scene.add(object);
+  const spinning = new Group();
+  spinning.add(toThree(model));
+  scene.add(spinning);
   scene.add(new AmbientLight(0xffffff, 0.6));
   const key = new DirectionalLight(0xffffff, 2);
   key.position.set(1, 2, 3);
@@ -197,7 +296,9 @@ async function main(): Promise<void> {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  animate(renderer, scene, camera, object);
+  animate(renderer, scene, camera, spinning);
+
+  await loadStepPart(loader, spinning, status);
 }
 
 main().catch((error: unknown) => {
