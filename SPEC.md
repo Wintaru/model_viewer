@@ -404,11 +404,49 @@ Each slice is independently shippable.
    **Commit 14 is a smoke demo, not the designed viewer.** It proves the library
    loads a file end to end. The viewer's actual shape is decision D7, still open.
 
-   Later slices get the same treatment when they are reached. Do not break them
-   down in advance: the plan will be wrong by the time you get there.
-
 2. **STEP and IGES.** `OcctDecodeEngine` behind the worker proxy, plus
    `WasmAssetAccessor` and the lazy import. Proves the packaging decision.
+
+   Broken down to commits, same reasoning as slice 1: each row's "leaves
+   green" claim is what makes the plan checkable rather than just listed.
+
+   | # | Commit | Leaves green because |
+   | --- | --- | --- |
+   | 1 | `Utility`: `ModuleRegistry` + tests | generic lazy `import()` cache keyed by a caller-supplied string type; takes no dependency on `Common` or any other layer, so it stays a leaf |
+   | 2 | `Utility`: `WorkerTransport` + tests | generic request/response correlation over an injectable postMessage-shaped object; tests supply an in-process fake, no real browser `Worker` needed |
+   | 3 | `Accessor`: `WasmAssetAccessor` + tests | fetches the OCCT `.wasm` binary as bytes from an overridable URL; tests inject a fake `fetch` |
+   | 4 | `Engine`: `OcctDecodeEngine` + tests | runs `occt-import-js` in-process against the NIST STEP corpus (same approach as `research/probe-step.mjs`), sourcing its wasm bytes through a test double of `WasmAssetAccessor` that reads the real `.wasm` file from disk — so the test exercises the actual `wasmBinary` handoff, not a different path. **STEP only.** IGES is deferred: no IGES file exists anywhere in this repository (checked `scripts/fetch-assets.sh` — the NIST corpus is STEP and SLDPRT only), so there is nothing to verify a decode against. Same reasoning already recorded in `REVIEW-BACKLOG.md` for why `FormatSniffEngine` doesn't detect IGES yet — the two gaps are coupled and should close together. |
+   | 5 | `Engine`: `OcctDecodeEngineProxy` + its paired worker entry point + tests | the proxy implements the same `transform(bytes)` shape `MeshDecodeEngine` already established, and is tested against an injected fake worker verifying the message contract and error propagation. The worker entry point itself is thin wiring — real `Worker` construction, pointed at the file via `new URL(..., import.meta.url)` — and is proven by the demo (row 7) rather than a unit test, the same split slice 1 drew between `MeshDecodeEngine`'s logic and its demo. |
+   | 6 | `Manager`: wire `'step'` through `ModuleRegistry` into `ModelLoadManager` + tests | replaces the `unsupported-format` fallback for `'step'` with a lazy `import()` of the proxy module. `'stl'` dispatch is left exactly as it is — eager, direct, no registry — logged in `REVIEW-BACKLOG.md` as a follow-up rather than fixed here, to keep this commit to the one concern slice 2 is actually about |
+   | 7 | Demo: extend `library-demo` to load a STEP file end to end | proves the packaging decision for real: a `.wasm` chunk fetched lazily, decoded off the main thread, in a browser |
+
+   **Why `ModuleRegistry` and `WorkerTransport` arrive together, ahead of the
+   engine that needs them.** Both are named, designed Utility components in
+   `ARCHITECTURE.md` sections 2 and 3 already — not new invention — and
+   `ModelLoadManager`'s own commit-11 comment says they "arrive in slice 2."
+   Building them first, generic and dependency-free, means `OcctDecodeEngine`
+   and its proxy are written against a settled contract instead of one
+   improvised alongside them.
+
+   **Why `WasmAssetAccessor` fetches bytes, not just a URL.**
+   `ARCHITECTURE.md`'s diagram draws the edge as `dec -->|"fetch .wasm"| wasm`
+   — an Accessor that hands back bytes, matching every other Accessor's
+   `read()` shape, not a resolver that hands back a string. Passing those
+   bytes to `occt-import-js` as `wasmBinary` sidesteps its own
+   environment-dependent `locateFile`/fetch machinery entirely, which is the
+   part sensitive to bundler configuration that section 4 already calls out
+   as "the cost we accepted."
+
+   **Why dispatch doesn't retrofit `'stl'` onto `ModuleRegistry` too.**
+   Section 4's bundle diagram draws every format behind a dynamic import,
+   `'stl'` included — so slice 1's direct, eager construction of
+   `MeshDecodeEngine` is a known simplification, not the final shape. Slice 2
+   is scoped to STEP and IGES; widening this commit to also change how mesh
+   dispatch works would mix two concerns for no reader's benefit. Logged in
+   `REVIEW-BACKLOG.md` instead.
+
+   Later slices get the same treatment when they are reached. Do not break
+   them down in advance: the plan will be wrong by the time you get there.
 3. **SolidWorks.** Port `research/d9-decode.py` to TypeScript. Parts first,
    then assemblies, which are untested.
 4. **Remote sources.** `UrlSourceAccessor` and `ResponseSourceAccessor`, plus

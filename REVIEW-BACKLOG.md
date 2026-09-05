@@ -187,3 +187,20 @@ Blocking findings were fixed. These were not.
   `pnpm run build` — traded away in commit 14 specifically so the demo
   bundler has one less prerequisite step, not because the gap doesn't
   matter.
+
+## From planning slice 2 (2026-09-05)
+
+- **`'stl'` dispatch stays outside `ModuleRegistry`.** Slice 2 introduces
+  `ModuleRegistry` for lazy `import()`, but only wires `'step'` through it
+  (`ModelLoadManager` still constructs `MeshDecodeEngine` eagerly, as it has
+  since slice 1). `ARCHITECTURE.md` section 4 draws every format, mesh
+  included, behind a dynamic import, so this is a known gap against the
+  target shape, not the final state. Retrofit `'stl'` onto the registry
+  whenever it's next touched, rather than as a standalone change — see
+  `DECISIONS.md`'s slice-2 planning entry.
+- **IGES still undetected and undecoded.** Unchanged from the entry above
+  this section: no IGES file exists anywhere in this repository. Slice 2's
+  `OcctDecodeEngine` implements `ReadStepFile` only for the same reason
+  `FormatSniffEngine` still lacks IGES detection — nothing to verify a
+  decode against. The two gaps should close in the same change, whenever a
+  real IGES fixture becomes available.
