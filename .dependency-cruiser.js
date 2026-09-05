@@ -80,5 +80,11 @@ export default {
     tsConfig: {
       fileName: "tsconfig.json",
     },
+    // verbatimModuleSyntax (tsconfig.json) means every type-only reference
+    // is written as `import type`. Without this, dependency-cruiser drops
+    // those edges entirely — a Common module built from nothing but `import
+    // type` statements cruised as 0 internal dependencies, so a real
+    // boundary-crossing type import would pass silently.
+    tsPreCompilationDeps: true,
   },
 };

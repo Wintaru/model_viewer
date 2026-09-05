@@ -85,6 +85,18 @@ defects below wrong, only lower priority.
   documents 11 SLDPRT files. Both are true — the bytes-per-triangle table covers
   9 — but say "9 of the 11".
 
+## From building slice 1 commit 5 — Common types (2026-09-05)
+
+- **`SPEC.md` section 6 and `ARCHITECTURE.md` section 7 both show a
+  `DecodedModel` code block that references `SceneNode` and `Diagnostic` but
+  never defines either.** Slice 1 commit 5 had to design both from scratch to
+  make the type compile — see `DECISIONS.md`. The two docs' code blocks are
+  now stale duplicates of the real source in `src/common/`, the same
+  situation the layer-rules table was in before commit 3. Once something
+  consumes these types in a later commit, give the same treatment: point
+  `SPEC.md`/`ARCHITECTURE.md` at `src/common/` instead of repeating the
+  shape.
+
 ## From the review of CLAUDE.md and the slice-1 plan (2026-09-05)
 
 Blocking findings were fixed. These were not.
