@@ -6,7 +6,7 @@
   "type": "module",
   "packageManager": "pnpm@11.20.0",
   "engines": {
-    "node": ">=20"
+    "node": "^22.12.0 || ^24.0.0 || >=26.0.0"
   },
   "scripts": {
     "assets": "bash scripts/fetch-assets.sh",
@@ -14,7 +14,8 @@
     "probe:truth": "node research/d8-ground-truth.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . && depcruise src",
-    "format": "prettier --check ."
+    "format": "prettier --check .",
+    "test": "vitest run"
   },
   "dependencies": {
     "occt-import-js": "^0.0.23"
@@ -27,6 +28,7 @@
     "globals": "^17.12.0",
     "prettier": "^3.9.6",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.69.0"
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^5.0.0"
   }
 }

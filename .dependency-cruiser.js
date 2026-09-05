@@ -70,6 +70,13 @@ export default {
     },
   ],
   options: {
+    // The layer rules only govern our own src/ tree. Without this,
+    // dependency-cruiser also crawls every package a dependency pulls in
+    // (e.g. one test importing "vitest" cruised 26 modules instead of the
+    // 3 that make up the actual src/ graph).
+    doNotFollow: {
+      path: "node_modules",
+    },
     tsConfig: {
       fileName: "tsconfig.json",
     },
