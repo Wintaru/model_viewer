@@ -137,3 +137,23 @@ Blocking findings were fixed. These were not.
   Engine depending on three.js. OBJ, PLY, glTF and 3MF are still listed as v1
   formats and have no plan yet. Hand-parsing all of them is not obviously right;
   glTF in particular is large. Revisit before slice 1 commit 10 grows.
+  `FormatSniffEngine` (commit 9) recognizes both ASCII and binary STL under
+  one `'stl'` id, since telling a decoder "this is some kind of STL" is a
+  reasonable sniff-level answer regardless of which variant is implemented —
+  but if this bullet's binary-only scope stands, commit 10 needs to report an
+  ASCII STL file as unsupported (a `Diagnostic`, not a crash) rather than
+  silently mis-parsing it.
+- **`FormatSniffEngine` does not detect IGES.** The `ISO-10303-21;` header it
+  checks is STEP's; real IGES files use fixed-width 80-column card records
+  with a section letter at column 73, an unrelated and more involved check.
+  No IGES file exists anywhere in this repository to verify a heuristic
+  against. Write real detection once one does — from the NIST corpus, or
+  once `OcctDecodeEngine` (slice 2) is being tested against one.
+- **`FormatSniffEngine` cannot recognize a large binary STL from a short
+  "sniff first" prefix.** Binary STL's only signature is a triangle count at
+  offset 80 that must make the total length add up — there is no magic
+  prefix, so a `readRange(0, 4096)` prefix (ARCHITECTURE.md section 3)
+  larger files stay `undefined` on, and the loader falls back to a full
+  read. ASCII STL is unaffected. Not clearly fixable without either reading
+  more of the file (defeating part of the fast path) or giving `transform`
+  the total byte length as a second, separate signal.
