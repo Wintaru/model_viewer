@@ -252,3 +252,21 @@ Blocking findings were fixed. These were not.
   sync-guard test asserting each `*.worker.ts` only imports the one
   `*Engine.ts` matching its own prefix) before or when a second worker
   lands — flagged by code review of commit 5.
+
+## From building slice 3 commit 2 — SolidWorksDecodeEngine extraction (2026-09-05)
+
+- **`extractTessDataStreams` has no skip-forward after a successful match,
+  and its real-fixture test takes 45-60s.** Measured, not assumed: even
+  `research/d9-decode.py`'s own C-accelerated zlib takes 36.37s for the same
+  file, so the cost is inherent to trying every offset at up to 5 recursive
+  levels, not a regression in this port — see DECISIONS.md. A real fix would
+  need `InflateUtil` to report a safe lower bound on consumed compressed
+  bytes (via incremental chunked `push()` calls against pako's public API,
+  not its private `strm` internals) so the scan can skip past a stream it
+  already found, the way `research/d9-decode.py` does with
+  `decompressobj().unused_data`. Only one real NIST fixture runs in the
+  default test suite specifically because of this cost (three fast
+  synthetic tests cover the rest of the algorithm's behavior). Worth
+  revisiting if `pnpm run test`'s growing runtime becomes a real problem —
+  not fixed now because it's optimizing an already-reference-matching cost,
+  not closing a correctness gap.
