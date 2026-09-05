@@ -449,6 +449,52 @@ Each slice is independently shippable.
    them down in advance: the plan will be wrong by the time you get there.
 3. **SolidWorks.** Port `research/d9-decode.py` to TypeScript. Parts first,
    then assemblies, which are untested.
+
+   Broken down to commits, same discipline as slices 1 and 2: each row's
+   "leaves green" claim is what makes the plan checkable rather than just
+   listed. Scoped to **parts only** — SLDASM stays out of this slice, matching
+   WAYFINDER.md's D9 follow-up that only parts are proven.
+
+   | # | Commit | Leaves green because |
+   | --- | --- | --- |
+   | 1 | `Utility`: `InflateUtil` (new `pako` dependency) + tests | a generic zlib-wrapped and raw-deflate inflate-at-offset, capped at a caller-supplied output size, built only on `pako`'s public `Inflate` class (`push`, `onData`, the `raw` option) — no private fields, no `as` past its types. Takes no dependency on `Common` or any other layer, so it stays a leaf. Tests cover a successful zlib decode, a successful raw decode, garbage rejected without throwing, and the cap actually aborting a bomb mid-stream rather than fully inflating it first. |
+   | 2 | `Engine`: `SolidWorksDecodeEngine` — recursive stream extraction + tests | ports `collect`/`inflate_all` from `research/d9-decode.py`: scans every offset of a buffer through `InflateUtil` for a zlib or raw-deflate stream, recurses into each hit up to depth 5 under one aggregate decompression budget, and keeps only streams containing the `TessData` magic. Deduplicates by direct byte comparison, not `hash()` — closing the collision risk REVIEW-BACKLOG.md already logged against the Python original, without adding a hashing dependency to fix it. Tested against a real NIST SLDPRT file's raw bytes (`assets/solidworks/`, `pnpm assets`), asserting the same stream count `research/d9-decode.py` prints for it. |
+   | 3 | `Engine`: `SolidWorksDecodeEngine` — tessellation block decode + tests | ports `decode_stream`/`_scan`: given one extracted stream, scans all 4 byte alignments for the `4, 8, 2, N` header (ARCHITECTURE.md section 6), reconstructs triangle **strips**, not fans, and discards candidates that overlap a larger one found at another alignment. Tested directly against one real extracted `TessData` stream, asserting the same vertex and triangle counts `research/d9-decode.py` prints for it. |
+   | 4 | `Engine`: `SolidWorksDecodeEngine` — `transform()` assembling a `DecodedModel` + tests | wires extraction and block decode together, converts SolidWorks's own metres (FINDINGS.md section 5) to `DecodedModel`'s millimetres, and reports a `no-tessdata-found` diagnostic rather than an empty model when nothing decodes — the same honest-failure posture `OcctDecodeEngine` already takes. Verified against the full NIST corpus with the same check `research/d9-verify-cached.py` runs: reproduces the independently-measured STEP bounding box within 2 percent or 0.5mm for 6 of 11 parts. |
+   | 5 | `Engine`: `SolidWorksDecodeEngineProxy` + its paired `solidworks.worker.ts` + tests | the same shape slice 2 commit 5 established: `transform(bytes): Promise<DecodedModel>`, forwarding over `WorkerTransport` to `SolidWorksDecodeEngine` running worker-side, tested against an injected fake worker the same way `OcctDecodeEngineProxy.test.ts` already is. Unlike `OcctDecodeEngineProxy`, there is no wasm asset to inject — the worker constructs `new SolidWorksDecodeEngine()` directly. |
+   | 6 | `Manager`: wire `'solidworks'` through `ModuleRegistry` into `ModelLoadManager` + tests | replaces the `unsupported-format` fallback for `'solidworks'` (already sniffed since slice 1 commit 9) with a lazy `import()` of the proxy, the same shape `'step'` got in slice 2 commit 6. Unlike `'step'`, the real registry needs no caller-supplied URL — there is no wasm asset — so it gets a real, parameterless default; a caller only overrides it in tests. |
+   | 7 | Demo: extend `library-demo` to load a real SLDPRT file end to end | proves the slice for real: a small NIST part, committed to `demo/` on the same precedent as `demo/nist-ftc-11.stp`, decoded off the main thread and added to the scene beside the existing STL cube and STEP part. |
+
+   **Why `pako`, and why this slice takes a new runtime dependency where
+   slice 2 did not.** The container-scan in commit 2 has no signature to
+   pre-filter raw-deflate candidates on — `research/scan-deflate.py`'s own
+   docstring calls this "attempt an inflate at every byte offset" — so it
+   must run a cheap, synchronous decompression attempt at (up to) every
+   offset in the file. The browser's native `DecompressionStream` is
+   async and stream-based; paying a Promise per offset over a file with
+   hundreds of thousands of candidate offsets would make the scan
+   impractically slow. `pako` is a mature, dependency-free port of zlib
+   with a synchronous, incremental API that exposes what this needs
+   (`push`/`onData`/`raw`) without reaching past its public surface.
+
+   **Why the outer scan does not chase exact consumed-byte counts.**
+   `research/d9-decode.py`'s `_scan` (commit 3's concern, operating on one
+   already-extracted stream) tracks exact byte spans to discard candidates
+   that overlap a larger one — that still applies here. But the outer
+   container scan's own dedup (Python's `collect`) happens by content
+   afterward, not by position, so knowing precisely how many compressed
+   bytes a hit consumed is a scan-speed nicety, not a correctness
+   requirement. Deferred until a real NIST file's measured timing says it
+   is needed, rather than built for a hypothetical — this repo's own
+   working method (DECISIONS.md is full of "measured by hand" entries).
+
+   **Why `'solidworks'` gets the lazy-worker treatment from commit 5,
+   unlike `'stl'`.** REVIEW-BACKLOG.md already logs `'stl'`'s eager,
+   non-worker dispatch as a known simplification against
+   ARCHITECTURE.md section 4's target shape, not the model to copy. Slice
+   2 built `'step'` the target way from its first commit; SolidWorks,
+   being new work rather than a retrofit, does the same.
+
 4. **Remote sources.** `UrlSourceAccessor` and `ResponseSourceAccessor`, plus
    the optional `readRange` path that lets the loader sniff a prefix and fetch
    the decoder in parallel with the download.
