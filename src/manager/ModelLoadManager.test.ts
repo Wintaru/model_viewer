@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fromBuffer } from "../accessor/BufferSourceAccessor";
-import { ModelLoadManager } from "./ModelLoadManager";
+import { ModuleRegistry } from "../utility/ModuleRegistry";
+import { ModelLoadManager, type StepDecoder } from "./ModelLoadManager";
 
 interface Triangle {
   readonly normal: readonly [number, number, number];
@@ -101,7 +102,10 @@ describe("ModelLoadManager", () => {
   it("reports unsupported-format for a recognized-but-undecodable format", async () => {
     const manager = new ModelLoadManager();
 
-    const model = await manager.load(ascii("ISO-10303-21;\nHEADER;\n"));
+    // DXF, not STEP: STEP is now conditionally supported (see the
+    // occt-decoder-not-configured tests below), so it no longer
+    // exercises this fallback the way it did before commit 6.
+    const model = await manager.load(ascii("0\r\nSECTION\r\n"));
 
     expect(model.meshes).toEqual([]);
     expect(model.diagnostics).toContainEqual(
@@ -110,7 +114,58 @@ describe("ModelLoadManager", () => {
         code: "unsupported-format",
       }),
     );
-    expect(model.diagnostics[0]?.message).toContain("step");
+    expect(model.diagnostics[0]?.message).toContain("dxf");
+  });
+
+  it("reports occt-decoder-not-configured for a STEP file with no decoder configured", async () => {
+    const manager = new ModelLoadManager();
+
+    const model = await manager.load(ascii("ISO-10303-21;\nHEADER;\n"));
+
+    expect(model.meshes).toEqual([]);
+    expect(model.diagnostics).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        code: "occt-decoder-not-configured",
+      }),
+    );
+  });
+
+  it("dispatches a STEP file to a configured decoder", async () => {
+    let receivedBytes: Uint8Array | undefined;
+    const fakeDecoder: StepDecoder = {
+      transform: (bytes) => {
+        receivedBytes = bytes;
+        return Promise.resolve({
+          units: "mm",
+          meshes: [],
+          tree: [],
+          metadata: { source: "fake-occt" },
+          diagnostics: [],
+        });
+      },
+    };
+    const stepDecoders = new ModuleRegistry<"step", StepDecoder>({
+      step: () => Promise.resolve(fakeDecoder),
+    });
+    const manager = new ModelLoadManager(undefined, undefined, stepDecoders);
+    const bytes = ascii("ISO-10303-21;\nHEADER;\n");
+
+    const model = await manager.load(bytes);
+
+    expect(model.metadata).toEqual({ source: "fake-occt" });
+    expect(receivedBytes).toEqual(bytes);
+  });
+
+  it("rejects when the configured step decoder fails to resolve", async () => {
+    const stepDecoders = new ModuleRegistry<"step", StepDecoder>({
+      step: () => Promise.reject(new Error("chunk fetch failed")),
+    });
+    const manager = new ModelLoadManager(undefined, undefined, stepDecoders);
+
+    await expect(
+      manager.load(ascii("ISO-10303-21;\nHEADER;\n")),
+    ).rejects.toThrow("chunk fetch failed");
   });
 
   it("reports unrecognized-format for bytes matching no known format", async () => {

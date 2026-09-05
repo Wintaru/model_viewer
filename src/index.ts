@@ -11,7 +11,20 @@ export { fromFile } from "./accessor/FileSourceAccessor";
  * ways".
  */
 export { ModelLoadManager as ModelLoader } from "./manager/ModelLoadManager";
-export type { ModelInput } from "./manager/ModelLoadManager";
+export type {
+  ModelInput,
+  StepDecoder,
+  StepDecoderConfig,
+} from "./manager/ModelLoadManager";
+
+/**
+ * Re-exported so a caller can build their own `StepDecoderConfig` — e.g.
+ * to share one lazily-constructed OCCT worker across several `ModelLoader`
+ * instances — without a deep import into `src/utility/`. The common case
+ * (a bare wasm asset URL, per ARCHITECTURE.md section 4) needs neither
+ * this nor `StepDecoder`/`StepDecoderConfig` above.
+ */
+export { ModuleRegistry } from "./utility/ModuleRegistry";
 
 export type {
   DecodedModel,

@@ -7,6 +7,7 @@ import {
 } from "../common/DecodedModel";
 import { FormatSniffEngine } from "../engine/FormatSniffEngine";
 import { MeshDecodeEngine } from "../engine/MeshDecodeEngine";
+import { ModuleRegistry } from "../utility/ModuleRegistry";
 
 /**
  * What {@link ModelLoadManager.load} accepts. Narrower than SPEC.md section
@@ -23,21 +24,56 @@ import { MeshDecodeEngine } from "../engine/MeshDecodeEngine";
 export type ModelInput = ModelSource | File | Blob | ArrayBuffer | Uint8Array;
 
 /**
+ * What `ModuleRegistry`'s `"step"` loader must resolve to. Matches
+ * `MeshDecodeEngine`/`OcctDecodeEngine`/`OcctDecodeEngineProxy`'s own
+ * `transform` shape, but declared independently rather than imported from
+ * any of them — a test's fake decoder, or a caller building their own
+ * registry, needs no import of `OcctDecodeEngineProxy` (and the real
+ * `Worker` it would try to construct) at all.
+ */
+export interface StepDecoder {
+  transform(bytes: Uint8Array): Promise<DecodedModel>;
+}
+
+/**
+ * Configures how `'step'`-sniffed bytes get decoded. A plain string is the
+ * common case — the OCCT wasm asset's URL, used to build a lazy registry
+ * that imports `OcctDecodeEngineProxy` on first use (SPEC.md section 10
+ * slice 2, ARCHITECTURE.md section 3). Passing an already-built
+ * `ModuleRegistry` directly is how a test substitutes a fake decoder
+ * without touching the real proxy or the `Worker` it constructs — the same
+ * "accepts injected engines" pattern `sniffer`/`meshDecoder` already use,
+ * just shaped as a union instead of a second constructor parameter,
+ * because unlike those two this one has no parameterless real default:
+ * see `WasmAssetAccessor`'s doc comment for why no URL is guessed.
+ */
+export type StepDecoderConfig = string | ModuleRegistry<"step", StepDecoder>;
+
+/**
  * The whole public surface for loading, per SPEC.md section 3: ask an
  * Accessor for bytes, ask the sniffer Engine what the format is, resolve
  * the decoder for that format, run it.
  *
- * Calls Engines directly. `ModuleRegistry`, `WorkerTransport` and the
- * Engine worker-proxies (ARCHITECTURE.md section 3) arrive in slice 2 —
- * until then every decode runs synchronously on the caller's thread, and
- * every recognized format that isn't `'stl'` (the only decoder that exists
- * yet) reports `unsupported-format` rather than being dispatched anywhere.
+ * `'stl'` is still dispatched eagerly and directly, not through
+ * `ModuleRegistry` — a known gap against ARCHITECTURE.md section 4's
+ * target shape (every format behind a dynamic import), logged in
+ * REVIEW-BACKLOG.md rather than fixed here, to keep this change to the one
+ * concern it's actually about.
  */
 export class ModelLoadManager {
+  private readonly stepDecoders:
+    ModuleRegistry<"step", StepDecoder> | undefined;
+
   constructor(
     private readonly sniffer: FormatSniffEngine = new FormatSniffEngine(),
     private readonly meshDecoder: MeshDecodeEngine = new MeshDecodeEngine(),
-  ) {}
+    stepDecoders?: StepDecoderConfig,
+  ) {
+    this.stepDecoders =
+      typeof stepDecoders === "string"
+        ? createOcctStepDecoders(stepDecoders)
+        : stepDecoders;
+  }
 
   async load(input: ModelInput): Promise<DecodedModel> {
     const source = toModelSource(input);
@@ -46,6 +82,24 @@ export class ModelLoadManager {
 
     if (format === "stl") {
       return this.meshDecoder.transform(bytes);
+    }
+    if (format === "step") {
+      if (this.stepDecoders === undefined) {
+        return createEmptyDecodedModel({
+          severity: "error",
+          code: "occt-decoder-not-configured",
+          message:
+            "Recognized this as a step file, but no STEP/IGES decoder is configured on this ModelLoadManager — pass the OCCT wasm asset's URL as the third constructor argument. See ARCHITECTURE.md section 4.",
+        });
+      }
+      // Deliberately not caught here, unlike every other exit from load():
+      // a rejected `get("step")` means the decoder chunk failed to import
+      // (or the registry's own loader threw), which is this manager's
+      // setup failing, not something about the file being decoded — the
+      // same distinction OcctDecodeEngine.ts draws between a per-file
+      // decode diagnostic and a rejected engine-setup failure.
+      const decoder = await this.stepDecoders.get("step");
+      return decoder.transform(bytes);
     }
     if (format === undefined) {
       return createEmptyDecodedModel({
@@ -60,6 +114,24 @@ export class ModelLoadManager {
       message: `Recognized this as a ${format} file, but no decoder for it exists in this version.`,
     });
   }
+}
+
+/**
+ * Builds the real, lazy `'step'` decoder registry: `OcctDecodeEngineProxy`
+ * is dynamically imported (and, once resolved, reused) only the first time
+ * a STEP file is actually opened, per D10's lazy format registry. Not
+ * exported for direct use elsewhere — `ModelLoadManager`'s constructor is
+ * the one place this needs building.
+ */
+function createOcctStepDecoders(
+  occtWasmUrl: string,
+): ModuleRegistry<"step", StepDecoder> {
+  return new ModuleRegistry({
+    step: () =>
+      import("../engine/OcctDecodeEngineProxy").then(
+        (module) => new module.OcctDecodeEngineProxy(occtWasmUrl),
+      ),
+  });
 }
 
 function toModelSource(input: ModelInput): ModelSource {
