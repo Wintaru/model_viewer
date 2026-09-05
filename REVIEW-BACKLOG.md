@@ -84,3 +84,28 @@ defects below wrong, only lower priority.
 - **`sldprt-triage.py` cites a "9-part NIST corpus"** while `assets/README.md`
   documents 11 SLDPRT files. Both are true — the bytes-per-triangle table covers
   9 — but say "9 of the 11".
+
+## From the review of CLAUDE.md and the slice-1 plan (2026-09-05)
+
+Blocking findings were fixed. These were not.
+
+- **The layer rules now live in four places** — the `ARCHITECTURE.md` section 2
+  table, prose in `SPEC.md`, the ASCII map in `SPEC.md`, and `CLAUDE.md`.
+  `CLAUDE.md` now points at the table instead of restating it, and the table is
+  declared authoritative, but the two `SPEC.md` copies remain. The real fix is
+  the `dependency-cruiser` config from slice 1 commit 3: once it exists it is the
+  executable copy, and the prose copies should be reduced to a pointer.
+- **The verify story lives in three places** — `.trillian-repo.json` (the
+  executable source), `CLAUDE.md`, and `SPEC.md`. Now declared authoritative in
+  one place, but the copies still exist.
+- **`research/README.md` indexes 8 of 16 scripts** and omits the whole D9 phase.
+  Still true, and now load-bearing: `CLAUDE.md` points at it for which scripts
+  need numpy.
+- **Built-in sources are named two ways.** `SPEC.md` section 3 calls them
+  `BufferSourceAccessor` and `FileSourceAccessor`; section 7 and the commit
+  table call them `fromBuffer` and `fromFile`. Decide which is the class and
+  which is the factory before writing the files.
+- **`MeshDecodeEngine` scope.** Slice 1 hand-parses binary STL to avoid an
+  Engine depending on three.js. OBJ, PLY, glTF and 3MF are still listed as v1
+  formats and have no plan yet. Hand-parsing all of them is not obviously right;
+  glTF in particular is large. Revisit before slice 1 commit 10 grows.
