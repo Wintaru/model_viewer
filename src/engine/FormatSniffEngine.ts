@@ -1,4 +1,9 @@
 import type { FormatId } from "../common/FormatId";
+import { startsWithAsciiCaseInsensitive } from "../utility/AsciiUtil";
+import {
+  readFixedRecordCount,
+  type FixedRecordLayout,
+} from "../utility/BinaryLayoutUtil";
 
 const STEP_SIGNATURE = "ISO-10303-21;";
 const DXF_SECTION_KEYWORD = "SECTION";
@@ -7,9 +12,7 @@ const ASCII_ZERO = 0x30;
 const SOLIDWORKS_SIGNATURE_OFFSET = 4;
 const SOLIDWORKS_SIGNATURE = [0x00, 0x00, 0x00, 0x04];
 
-const STL_HEADER_SIZE = 80;
-const STL_COUNT_SIZE = 4;
-const STL_TRIANGLE_SIZE = 50;
+const STL_LAYOUT: FixedRecordLayout = { headerSize: 80, recordSize: 50 };
 
 /**
  * Bytes to a format identifier. Pure. Implements the sniff step of
@@ -98,15 +101,7 @@ function looksLikeAsciiStl(bytes: Uint8Array): boolean {
 }
 
 function looksLikeBinaryStl(bytes: Uint8Array): boolean {
-  if (bytes.byteLength < STL_HEADER_SIZE + STL_COUNT_SIZE) {
-    return false;
-  }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const triangleCount = view.getUint32(STL_HEADER_SIZE, true);
-  return (
-    STL_HEADER_SIZE + STL_COUNT_SIZE + triangleCount * STL_TRIANGLE_SIZE ===
-    bytes.byteLength
-  );
+  return readFixedRecordCount(bytes, STL_LAYOUT) !== undefined;
 }
 
 function startsWithAscii(
@@ -119,23 +114,6 @@ function startsWithAscii(
   }
   for (let i = 0; i < text.length; i++) {
     if (bytes[offset + i] !== text.charCodeAt(i)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/** Only correct for an all-letters `text`, already lowercase. */
-function startsWithAsciiCaseInsensitive(
-  bytes: Uint8Array,
-  text: string,
-): boolean {
-  if (bytes.byteLength < text.length) {
-    return false;
-  }
-  for (let i = 0; i < text.length; i++) {
-    const byte = bytes[i];
-    if (byte === undefined || (byte | 0x20) !== text.charCodeAt(i)) {
       return false;
     }
   }
