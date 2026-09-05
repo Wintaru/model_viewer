@@ -220,3 +220,20 @@ Blocking findings were fixed. These were not.
   this is trusted-by-reasoning, not verified-by-test. Revisit if this
   repo ever gains a browser-based test target (Vitest browser mode,
   Playwright) — worth a real regression test then.
+- **`OcctDecodeEngine` trusts, rather than verifies, that OCCT's
+  `brep_faces` are already contiguous, non-overlapping and in ascending
+  order.** `FaceRange`'s own doc comment (`src/common/FaceRange.ts`) states
+  this as a load-bearing invariant — `BufferGeometry` groups silently drop
+  or duplicate triangles when it doesn't hold, rather than erroring — but
+  `toFaceRange` in `OcctDecodeEngine.ts` just maps `brep_faces` through
+  unchanged. `OcctDecodeEngine.test.ts` only checks that the face counts
+  *sum* to the total triangle count for one real file
+  (`nist_ctc_01_asme1_rd.stp`), which is necessary but not sufficient — a
+  set of ranges could sum correctly while still overlapping or gapping.
+  Nothing in `research/probe-step.mjs` or `research/FINDINGS.md` documents
+  occt-import-js guaranteeing this ordering, so it's an unverified
+  assumption about an external boundary. A stronger test (sort by `start`,
+  assert each range starts where the previous one ends, first `start === 0`,
+  last end `=== indices.length`) would close the gap cheaply — worth adding
+  next time this file is touched, flagged by code review of commit 4 as
+  reasonable to defer rather than block on.
