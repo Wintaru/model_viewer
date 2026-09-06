@@ -45,6 +45,17 @@ export default {
       },
     },
     {
+      name: "dxf-worker-only-imports-dxf-engine",
+      comment:
+        "Same narrowing as occt-worker-only-imports-occt-engine, for dxf.worker.ts and DxfDecodeEngine.",
+      severity: "error",
+      from: { path: "^src/engine/dxf\\.worker\\.ts$" },
+      to: {
+        path: "^src/engine/",
+        pathNot: "^src/engine/DxfDecodeEngine\\.ts$",
+      },
+    },
+    {
       name: "no-engine-to-manager",
       comment: "Engine must never call upward into Manager.",
       severity: "error",
