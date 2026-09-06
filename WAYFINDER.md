@@ -104,15 +104,94 @@ scope by absence of a decision, not by absence of a path. See D12.
   directory parsing for its own *pre-2014* branch — for 2015+ it falls back
   to a **byte-marker scan** (`14 00 06 00 08 00`) plus ROL-decoded stream
   names, not a directory walk, and covers metadata/BOM only, not
-  tessellation. Recursive inflate (`collect`/`inflateAll`) can't be
-  eliminated either way — D11 already found nesting one layer deeper than
-  any marker/directory would index — so the real fix **bounds** that
-  recursion to one located stream's byte range instead of running it over
-  the whole file, rather than replacing it outright. The code for this
-  belongs in `utility/` (e.g. `SolidWorksContainerUtil.ts`, beside
-  `InflateUtil`), not `Common` or an Accessor: a stateless byte transform,
-  SolidWorks-specific since there's no generic structure to abstract over.
-  Opened D14 for the concrete reverse-engineering work.
+  tessellation. Guessed recursive inflate (`collect`/`inflateAll`) couldn't
+  be eliminated, only bounded — **D14 (next) found this guess wrong, in the
+  good direction: it can be eliminated entirely** for the one thing this
+  project actually needs from the container. The code for this belongs in
+  `utility/` (e.g. `SolidWorksContainerUtil.ts`, beside `InflateUtil`), not
+  `Common` or an Accessor: a stateless byte transform, SolidWorks-specific
+  since there's no generic structure to abstract over. Opened D14 for the
+  concrete reverse-engineering work.
+- **D14 — The marker format works exactly as documented, and eliminates the
+  scan entirely — validated, not just prototyped, 2026-09-06 18:16.** Found
+  `openswx`'s actual C++ source (`libopenswx/src/internal/modern_parser.cc`,
+  `rol_codec.h` — read directly via `gh api`, not taken on faith from its
+  README) and it's a complete, byte-exact chunk format: search for
+  `14 00 06 00 08 00`, the chunk header starts 4 bytes before it, fixed
+  fields at fixed offsets give the compressed size, **the exact
+  uncompressed size**, and a name length; the name itself is a simple
+  rotate-cipher (key = byte 7 of the file) decode of the bytes right after
+  the header, and the payload right after *that* is a single, non-nested
+  raw-deflate blob of exactly the declared compressed size.
+
+  Ported it to Python and ran it for real — not just against the container
+  layout in the abstract, against actual files: **4 NIST SLDPRT files** (all
+  public, safe to detail) each parse in 2-5 milliseconds and land the
+  tessellation cache in a chunk named `Contents/DisplayLists` every time,
+  including `nist_ftc_11`, D9's own unexplained miss (worth a follow-up look
+  since this reads its full, correctly-sized 229,376-byte stream cleanly —
+  not chased further here, out of scope for this ticket). Then, carefully —
+  reporting only booleans, chunk names, and byte counts below, no path,
+  property, or geometry content — against **3 real confidential files**
+  (`the customer corpus`): the 358 KB part decoded the same way in
+  2ms; the SLDDRW case uses a *different* but still generic, non-identifying
+  chunk name, `Contents/VBLists`, consistent across both a 215 KB drawing
+  (2ms) and the 13.5 MB drawing that needed manual killing under the old
+  brute-force scan — this one now parses in **95 milliseconds**. Its
+  `Contents/VBLists` chunk's declared uncompressed size (48,864,018 bytes)
+  matches the actual `zlib` output length exactly, and matches the number
+  D11 measured by hand months of wall-clock investigation ago.
+
+  **This also corrects the "recursion can't be eliminated" guess directly
+  above:** D11's original finding of a raw-deflate stream needing "one more
+  explicit recursion past `scan-deflate.py`'s own output-cap ceiling" was an
+  artifact of that ad hoc script's 8 MB per-attempt cap, not genuine nested
+  container structure — the real chunk is one flat, singly-compressed blob,
+  and its header states the exact decompressed size up front (no cap
+  needed, no recursion, one `zlib.decompressobj(-15).decompress(...)` call).
+
+  **This also means D12's Engine-shape sub-question is now answerable, not
+  just unblocked:** the identical chunk-parsing algorithm handles SLDPRT and
+  SLDDRW alike — the only difference is which chunk *name* carries
+  `TessData` (`Contents/DisplayLists` vs `Contents/VBLists`), and this
+  project's own existing filter (search the decompressed bytes for the
+  `TessData` substring, already how `extractTessDataStreams` works today)
+  doesn't even need to know the name in advance. That reads as "grows a
+  mode," not "earns a new Engine" — but that's a recommendation, not a
+  closed decision; flagging it for Josh rather than closing D12 unilaterally
+  in the same ticket that was only asked to answer D14.
+
+  **Confirmed by the real implementation, 2026-09-06 18:43 — and it's
+  stronger than "grows a mode."** Josh asked to build this. Shipped
+  `src/utility/SolidWorksContainerUtil.ts` (the algorithm above, TypeScript)
+  and wired it into `SolidWorksDecodeEngine.ts`, replacing the old
+  `collect`/`inflateAll` brute force outright rather than keeping both —
+  `extractTessDataStreams`'s external contract (dedup, `TessData`-filtered,
+  same return type) is unchanged, so every existing caller and test needed
+  no changes beyond rebuilding synthetic fixtures in the real chunk format
+  instead of a bare deflate blob. Ran `SolidWorksDecodeEngine.transform()`
+  end to end (not just extraction) against the same 3 real confidential
+  files: the SLDPRT decoded in 33ms with zero diagnostics; **both SLDDRW
+  files decoded successfully too — 10ms for the 215 KB one, 825ms for the
+  13.5 MB one — zero diagnostics, one real mesh each, through the exact
+  same `SolidWorksDecodeEngine`, no SLDDRW-specific code anywhere.** So the
+  honest answer to "does it grow a mode" is: it didn't need to grow
+  anything — the existing content-sniffing design already generalized.
+  Full test suite (209 tests, all real-file tests included) now runs in
+  3.3 seconds total, down from a runtime dominated by two 45-60-second
+  tests. Independent code review (foreground) confirmed the refactor
+  preserves behavior and caught one real regression (the old aggregate
+  decompression-budget guard had no equivalent in the new code — fixed by
+  adding one back, scoped per `extractModernContainerChunks` call) plus one
+  broken-cross-reference issue (this entry itself, and eight other files,
+  cited "WAYFINDER.md's D13/D14" from a feature branch that didn't yet
+  contain them — fixed by merging the two branches before commit, which is
+  why this update carries a later timestamp than the commit it describes).
+
+  **Not decided here, still Josh's:** whether SLDDRW formally joins v1 as a
+  documented, supported format (this note is about what the code does, not
+  what the product promises — the remaining D12 sub-questions below, viewing
+  and the 2018-only caveat, are still open either way).
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP bounding
   box. See `DECISIONS.md`.
@@ -184,11 +263,11 @@ This is the scope question that follows it, same shape as D2 (SolidWorks
 scope) and D6 (DXF adapter split) before it. Open sub-questions:
 
 - ~~Does `SolidWorksDecodeEngine` grow a SLDDRW mode, or does SLDDRW earn its
-  own Engine?~~ Blocked on the extraction-approach question below — deciding
-  the Engine shape before knowing whether extraction is even fast enough to
-  ship would be premature. Revisit once D14 (below) has an answer — D13
-  (Decisions so far, above) only found *that* the extraction approach
-  needs reverse-engineering, not the pattern itself yet.
+  own Engine?~~ **Recommended answer available, 2026-09-06 18:16 — see D14
+  in Decisions so far, above.** The validated extraction approach handles
+  SLDPRT and SLDDRW with the identical algorithm, which reads as "grows a
+  mode." Left as a recommendation rather than a closed decision here —
+  Josh's call to confirm.
 - ~~The container scan that found the cache needed one more explicit
   raw-deflate recursion past `scan-deflate.py`'s own output-cap ceiling…~~
   **Resolved and superseded, 2026-09-06 — see below: the real problem is
@@ -230,45 +309,20 @@ ship, at the cost of being the bigger lift of the three. Opened as **D13**
 (Decisions so far, above) — the concrete research question this decision
 creates, resolved the same session (see there for what it found).
 
-Not a blocker on anything already shipped. `FormatSniffEngine` misidentifying
-SLDDRW as `"solidworks"` and hanging instead of failing fast is a real,
-separate, smaller bug in current behavior — tracked for `REVIEW-BACKLOG.md`,
-not fixed inside this wayfinder session (planning, not implementing).
-
-### D14 — Reverse-engineer the modern SolidWorks record/marker boundary pattern `[research]`
-
-D13 found that no published spec exists for the container format this
-project's SolidWorks decoder targets, and that the closest working prior
-art (`openswx`'s 2015+ path) locates streams by scanning for a
-`14 00 06 00 08 00` byte marker rather than walking an indexed directory.
-This ticket is the empirical work D13 could only recommend, not do itself:
-
-- Hex-diff the byte regions immediately preceding each of D11's already-known
-  real stream offsets — SLDPRT's known streams (`research/FINDINGS.md`
-  section 5 catalogs 22 for one NIST file), and SLDDRW's outer tessellation
-  stream (`DECISIONS.md`'s D11 entry) — across several real sample files, to
-  find a consistent short marker and/or length-prefix pattern preceding each
-  one. Same comparative method D8/D9/D11 each already used.
-- Confirm whether `openswx`'s own `14 00 06 00 08 00` marker appears at (or
-  near) these same offsets in this project's sample files — if it does,
-  that's a working starting point rather than a cold reverse-engineering
-  start.
-- Once a marker/boundary pattern is confirmed, prototype a scan that finds
-  it directly (a targeted byte-sequence search, cheap compared to the
-  current per-offset decompression attempt) and measure it against the same
-  215 KB SLDDRW sample that hung for 400+ seconds under the current
-  `collect`/`inflateAll` — the concrete bar this ticket needs to clear.
-- Only once boundary-finding is fast does D12's Engine-shape question
-  (mode vs. new Engine) become answerable with real information instead of
-  a guess.
-
-Uses real, confidentiality-sensitive sample files
-(`the customer corpus` and the NIST corpus) — CLAUDE.md's usual
-rules apply: no raw stream bytes or decoded content in anything committed,
-findings only.
-
-Blocks D12's Engine-shape sub-question. Not a blocker on anything already
-shipped.
+`FormatSniffEngine` misidentifying SLDDRW as `"solidworks"` and hanging
+instead of failing fast is a real, separate, smaller bug in current
+behavior — tracked for `REVIEW-BACKLOG.md`, not fixed inside this
+wayfinder session (planning, not implementing). **Revised 2026-09-06
+18:16, once D14 (Decisions so far, above) validated the fix: this is no
+longer only a SLDDRW/new-format question.** The same marker-based
+extraction is a direct, drop-in-shaped replacement for the byte-by-byte
+scan `SolidWorksDecodeEngine.ts` already uses for every SLDPRT it decodes
+today — millisecond parsing measured against real NIST files that
+currently take 45-60 seconds (research-script figure) to several minutes
+(measured in a real browser, this session's own D12 investigation). Not a
+blocker on anything already shipped in the sense of "broken" — SLDPRT
+decoding works — but a large, validated performance win available for it,
+independent of whether SLDDRW itself ever joins v1.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 
