@@ -12,6 +12,7 @@ Run order, and what each one settles.
 | `d8-extract-cache.py` | Extract every nested stream once and cache to disk. Slow, so run it once. |
 | `d8-final.py` | Does a cached display mesh exist? (Yes.) |
 | `d8-analyze.py` | Same analysis against one directory of streams. |
+| `d14-marker-scan.py` | Can the container's real structure be read directly, instead of scanning every byte for a compressed stream? (Yes — a documented open-source reader's chunk format, validated against every sample file: 2-95ms instead of 45-60s to several minutes.) |
 
 ## Run the control first
 

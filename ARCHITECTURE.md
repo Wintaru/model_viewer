@@ -319,16 +319,39 @@ how, including the three wrong turns.
 
 ```mermaid
 flowchart LR
-    file["SLDPRT / SLDASM file"] --> gen{"Container<br/>generation?"}
+    file["SLDPRT / SLDASM /<br/>SLDDRW file"] --> gen{"Container<br/>generation?"}
     gen -->|"OLE2 magic<br/>d0cf11e0"| old["2013 and earlier<br/><i>not supported</i>"]
-    gen -->|"00 00 00 04 at offset 4<br/>2014 onward"| inflate["Recursive inflate<br/>zlib + raw deflate<br/>~97% of the file"]
-    inflate --> nested["Nested streams<br/>some hold further streams"]
-    nested --> pick["Keep those containing<br/>uoTempFaceTessData_c<br/>uoTempBodyTessData_c"]
+    gen -->|"00 00 00 04 at offset 4<br/>2014 onward"| scan["Scan for the<br/>14 00 06 00 08 00<br/>chunk marker"]
+    scan --> header["Read one fixed-offset<br/>header per chunk:<br/>sizes + ROL-ciphered name"]
+    header --> inflate["Raw-inflate the chunk<br/>declared size, one call"]
+    inflate --> pick["Keep chunks whose<br/>content contains TessData"]
     pick --> next(["to block decoding"])
 
     classDef bad fill:#ffe0e0,stroke:#c33
     class old bad
 ```
+
+`SolidWorksContainerUtil.ts` reads this container structure directly — a real
+chunk format (marker, fixed header, ROL-ciphered name, then one raw-deflate
+payload of exactly the declared size), not the blind byte-by-byte inflate
+attempt this project ran before WAYFINDER.md's D14. That was never a
+container parser at all: it tried decompression at every offset of the whole
+file, recursively, because nobody had reverse-engineered this structure yet.
+The record layout came from `openswx`'s (MIT, github.com/schwitters/openswx)
+own `ParseModernFormat` source, read directly rather than assumed, then
+validated against every real SLDPRT/SLDDRW sample this project has access
+to. Concrete difference: the same NIST part that took 45-60 seconds to
+extract under the old scan now takes 2-5 milliseconds, and a SolidWorks
+*drawing* — which the old scan could take several minutes on, or hang
+outright — decodes in under a second even at 13.5 MB. See DECISIONS.md and
+WAYFINDER.md's D12-D14 for the investigation.
+
+Filtering by the `TessData` substring inside a chunk's decompressed content
+(rather than trusting a specific chunk name) is deliberate: a part's cache
+lives in a chunk named `Contents/DisplayLists`, a drawing's in
+`Contents/VBLists` — different document types, different names, same
+content fingerprint. Content-sniffing is what generalizes across them
+without hardcoding either name.
 
 ### Stage 2 — decode a tessellation block
 
@@ -392,6 +415,17 @@ holds tessellated PMI annotation geometry. One, `nist_ftc_11`, is a genuine
 unexplained miss.
 
 Verified on SolidWorks 2018 and 2020, parts only. Assemblies are untested.
+
+**Container-level extraction (Stage 1 above) is no longer part-specific —
+Stage 2 onward still is.** `SolidWorksContainerUtil.ts` decodes real SLDDRW
+drawing files end to end with no errors and a plausible mesh, using the
+identical code path as SLDPRT (WAYFINDER.md's D14). That is not the same
+claim as this section's own bounding-box verification above: nobody has yet
+checked a decoded drawing's geometry against independent ground truth the
+way the NIST parts are checked here, and whether SLDDRW joins v1 as a
+supported format is a separate, still-open product decision (WAYFINDER.md's
+D12) — this note is about what the code does, not what the product
+promises.
 
 ---
 

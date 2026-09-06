@@ -124,7 +124,7 @@ Three layers, and only one is hard.
 
 | Layer | Status |
 | --- | --- |
-| Open the container | **Solved.** Done in this session. Also done independently by [`openswx`](https://github.com/schwitters/openswx), MIT licensed. |
+| Open the container | **Solved.** Done in this session by a blind byte-by-byte deflate scan — no structure of the container itself understood, only that compressed streams live somewhere in it. **Superseded 2026-09-06 (D14):** the container's real chunk structure (a marker, a fixed header, a ROL-ciphered name, then one raw-deflate payload) is now read directly, ported from [`openswx`](https://github.com/schwitters/openswx)'s (MIT) actual source rather than assumed — see `research/d14-marker-scan.py` and `ARCHITECTURE.md` section 6. Milliseconds instead of tens of seconds to several minutes; see `DECISIONS.md` and `WAYFINDER.md`'s D12-D14. |
 | Read the metadata | **Solved by `openswx`** — properties, mass properties, assembly tree, previews, drawing sheets. It stops before geometry. |
 | Turn Parasolid XT into triangles | **The real work.** |
 
@@ -240,17 +240,24 @@ This is not legal advice. Get a real opinion before the project gets popular.
 **Resolved 2026-09-06 (D11): yes, SLDDRW caches tessellation the same way
 SLDPRT does.** Confirmed against a real customer drawing file — out of band,
 not part of this repository's tracked corpus, and gitignored per this
-project's confidentiality rule (`CLAUDE.md`). The container shape differs
-from SLDPRT's (one dominant outer raw-deflate stream rather than many small
-ones — `scan-deflate.py`'s own per-stream output cap silently stopped
-scanning once it hit that first large stream, so finding the rest needed one
-more explicit layer of raw-deflate recursion past it), but one nested stream
-inside it carries the exact same fingerprint SLDPRT's cached mesh carries:
-the `TessData` magic and the `uoTempFaceTessData_c`/`uoTempBodyTessData_c`
-class-name pair. `research/d9-decode.py`'s `decode_stream`/`_scan` — the
-record layout already reverse-engineered for SLDPRT, used unmodified — parses
-real triangles with plausible coordinates and unit-length normals straight
-out of it.
+project's confidentiality rule (`CLAUDE.md`). At the time, the container
+shape looked like it differed from SLDPRT's (one dominant outer raw-deflate
+stream rather than many small ones — `scan-deflate.py`'s own per-stream
+output cap silently stopped scanning once it hit that first large stream, so
+finding the rest needed one more explicit layer of raw-deflate recursion
+past it). **Revised 2026-09-06 (D14): that extra layer was an artifact of
+the ad hoc script's 8 MB output cap, not real container nesting.** Read via
+the container's actual chunk structure instead of a blind scan, a
+drawing's tessellation cache is exactly as flat as a part's — one chunk
+(named `Contents/VBLists` rather than a part's `Contents/DisplayLists`),
+one raw-deflate payload, no nested recursion needed to reach it. Its
+decompressed content carries the exact same fingerprint SLDPRT's cached
+mesh carries: the `TessData` magic and the
+`uoTempFaceTessData_c`/`uoTempBodyTessData_c` class-name pair.
+`research/d9-decode.py`'s `decode_stream`/`_scan` — the record layout
+already reverse-engineered for SLDPRT, used unmodified — parses real
+triangles with plausible coordinates and unit-length normals straight out
+of it.
 
 `openswx` already reads drawing sheet names and view references, but the
 tessellation-scale mesh cache is new territory it doesn't cover. This

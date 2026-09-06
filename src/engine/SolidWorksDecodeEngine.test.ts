@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { deflate, deflateRaw } from "pako";
+import { deflateRaw } from "pako";
 import { describe, expect, it } from "vitest";
 import {
   decodeTessDataStream,
@@ -9,14 +9,16 @@ import {
 
 const SOLIDWORKS_DIR = "assets/solidworks";
 const TESS_DATA_MAGIC = "TessData";
+const CHUNK_MARKER = [0x14, 0x00, 0x06, 0x00, 0x08, 0x00];
+const CHUNK_HEADER_SIZE = 0x1e;
+const INLINE_F1 = 100_000;
 
 function readSldprt(name: string): Uint8Array {
   return readFileSync(`${SOLIDWORKS_DIR}/${name}`);
 }
 
 /**
- * Non-compressible-looking bytes, long enough to clear the 256-byte minimum
- * `extractTessDataStreams` requires, with the magic marker embedded midway
+ * Non-compressible-looking bytes with the magic marker embedded midway
  * through — same shape as a real TessData stream (a header, then a large
  * block of tessellation data), without needing a real file.
  */
@@ -29,31 +31,75 @@ function tessDataPayload(length: number): Uint8Array {
   return bytes;
 }
 
-// Measured by hand (DECISIONS.md): the full recursive scan takes tens of
-// seconds even in research/d9-decode.py's own C-accelerated zlib (36s for
-// this exact file), because trying every offset at up to 5 nested levels is
-// inherently expensive — not something this port regressed. Generous, not
-// tight: real runs land around 45-60s.
-const REAL_FILE_TIMEOUT_MS = 90_000;
+/** The exact inverse of production's rotate-left name cipher
+ * (`SolidWorksContainerUtil.ts`'s `rolDecodeByte`). */
+function rotateRightByte(byte: number, bits: number): number {
+  const shift = bits & 7;
+  if (shift === 0) {
+    return byte;
+  }
+  return ((byte >>> shift) | (byte << (8 - shift))) & 0xff;
+}
+
+/**
+ * Wraps `payload` in a minimal, real modern-container "file": an 8-byte
+ * header (byte 7 is the ROL key) followed by one inline chunk —
+ * `extractTessDataStreams` reads real file bytes, container envelope
+ * included, not a bare deflate blob, so every fixture below needs to look
+ * like one. `SolidWorksContainerUtil.test.ts` tests the chunk format itself
+ * in detail; this only needs one chunk to drive `extractTessDataStreams`'s
+ * own magic-sniffing and dedup behavior.
+ */
+function buildSolidWorksFile(
+  chunks: readonly { name: string; payload: Uint8Array }[],
+): Uint8Array {
+  const key = 0x04; // matches every real sample file seen so far
+  const chunkBytes = chunks.map(({ name, payload }) => {
+    const compressed = deflateRaw(payload);
+    const nameBytes = new TextEncoder().encode(name);
+    const encodedName = Uint8Array.from(nameBytes, (b) =>
+      rotateRightByte(b, key),
+    );
+    const bytes = new Uint8Array(
+      CHUNK_HEADER_SIZE + encodedName.length + compressed.length,
+    );
+    const view = new DataView(bytes.buffer);
+    bytes.set(CHUNK_MARKER, 4);
+    view.setUint32(0x0e, INLINE_F1, true);
+    view.setUint32(0x12, compressed.length, true);
+    view.setUint32(0x16, payload.length, true);
+    view.setUint32(0x1a, encodedName.length, true);
+    bytes.set(encodedName, CHUNK_HEADER_SIZE);
+    bytes.set(compressed, CHUNK_HEADER_SIZE + encodedName.length);
+    return bytes;
+  });
+  const header = new Uint8Array(8);
+  header[7] = key;
+  const totalLength =
+    header.length + chunkBytes.reduce((sum, c) => sum + c.length, 0);
+  const bytes = new Uint8Array(totalLength);
+  bytes.set(header, 0);
+  let offset = header.length;
+  for (const chunk of chunkBytes) {
+    bytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return bytes;
+}
 
 describe("extractTessDataStreams", () => {
-  // Only one real fixture runs in the default suite, deliberately — see the
-  // timeout comment above for why each one is this slow. Ground truth taken
-  // by running research/d9-decode.py's own `collect` against this exact
-  // file, not assumed; the byte length also matches FINDINGS.md section 5's
-  // measured table.
-  it(
-    "recovers the one TessData stream in a real NIST part, byte-for-byte the size research/d9-decode.py finds",
-    () => {
-      const streams = extractTessDataStreams(
-        readSldprt("nist_ctc_01_asme1_rd_sw1802.SLDPRT"),
-      );
+  // D14 (WAYFINDER.md): this used to need a 90-second timeout — the
+  // brute-force scan this function replaced took 45-60s per real NIST
+  // part. The real container structure makes this fast enough that every
+  // fixture, real files included, now runs at default `vitest` speed.
+  it("recovers the one TessData stream in a real NIST part, byte-for-byte the size research/d9-decode.py finds", () => {
+    const streams = extractTessDataStreams(
+      readSldprt("nist_ctc_01_asme1_rd_sw1802.SLDPRT"),
+    );
 
-      expect(streams).toHaveLength(1);
-      expect(streams[0]?.length).toBe(287_403);
-    },
-    REAL_FILE_TIMEOUT_MS,
-  );
+    expect(streams).toHaveLength(1);
+    expect(streams[0]?.length).toBe(287_403);
+  });
 
   it("finds nothing in bytes that hold no compressed stream at all", () => {
     const plainBytes = new TextEncoder().encode(
@@ -67,29 +113,32 @@ describe("extractTessDataStreams", () => {
     expect(extractTessDataStreams(new Uint8Array(0))).toEqual([]);
   });
 
-  it("recovers a stream nested two levels of compression deep", () => {
+  it("recovers a TessData chunk's decompressed payload from a real container", () => {
     const payload = tessDataPayload(1_000);
-    const wrappedOnce = deflateRaw(payload);
-    const wrappedTwice = deflate(wrappedOnce);
+    const file = buildSolidWorksFile([
+      { name: "Contents/DisplayLists", payload },
+    ]);
 
-    expect(extractTessDataStreams(wrappedTwice)).toEqual([payload]);
+    expect(extractTessDataStreams(file)).toEqual([payload]);
   });
 
-  it("dedupes byte-identical streams found at different offsets", () => {
+  it("dedupes byte-identical chunks found under different names", () => {
     const payload = tessDataPayload(1_000);
-    const compressed = deflate(payload);
-    const bytes = new Uint8Array(compressed.length * 2);
-    bytes.set(compressed, 0);
-    bytes.set(compressed, compressed.length);
+    const file = buildSolidWorksFile([
+      { name: "Contents/DisplayLists", payload },
+      { name: "Contents/VBLists", payload },
+    ]);
 
-    expect(extractTessDataStreams(bytes)).toEqual([payload]);
+    expect(extractTessDataStreams(file)).toEqual([payload]);
   });
 
-  it("discards a decompressed stream that doesn't contain the magic", () => {
+  it("discards a chunk whose decompressed payload doesn't contain the magic", () => {
     const withoutMagic = new Uint8Array(1_000).fill(0x42);
-    const compressed = deflate(withoutMagic);
+    const file = buildSolidWorksFile([
+      { name: "Contents/DisplayLists", payload: withoutMagic },
+    ]);
 
-    expect(extractTessDataStreams(compressed)).toEqual([]);
+    expect(extractTessDataStreams(file)).toEqual([]);
   });
 });
 
@@ -192,23 +241,19 @@ describe("decodeTessDataStream", () => {
     expect(mesh.indices).toHaveLength(0);
   });
 
-  it(
-    "matches research/d9-decode.py's own vertex and triangle counts for a real NIST part",
-    () => {
-      const [stream] = extractTessDataStreams(
-        readSldprt("nist_ctc_01_asme1_rd_sw1802.SLDPRT"),
-      );
-      if (stream === undefined) {
-        throw new Error("expected extractTessDataStreams to find a stream");
-      }
+  it("matches research/d9-decode.py's own vertex and triangle counts for a real NIST part", () => {
+    const [stream] = extractTessDataStreams(
+      readSldprt("nist_ctc_01_asme1_rd_sw1802.SLDPRT"),
+    );
+    if (stream === undefined) {
+      throw new Error("expected extractTessDataStreams to find a stream");
+    }
 
-      const mesh = decodeTessDataStream(stream);
+    const mesh = decodeTessDataStream(stream);
 
-      expect(mesh.positions).toHaveLength(3_396 * 3);
-      expect(mesh.indices).toHaveLength(2_296 * 3);
-    },
-    REAL_FILE_TIMEOUT_MS,
-  );
+    expect(mesh.positions).toHaveLength(3_396 * 3);
+    expect(mesh.indices).toHaveLength(2_296 * 3);
+  });
 });
 
 /** Independently re-derives the strip-triangulation rule (ARCHITECTURE.md
@@ -272,10 +317,8 @@ function expectWithinTolerance(got: number, want: number): void {
 describe("SolidWorksDecodeEngine", () => {
   it("reports no-tessdata-found for a file with no compressed stream at all", () => {
     const engine = new SolidWorksDecodeEngine();
-    // No valid zlib or raw-deflate stream anywhere in here, so
-    // tryInflateAt never succeeds at any offset — MIN_ACCEPTED_OUTPUT_BYTES
-    // never even comes into play, since that only gates a *successful*
-    // inflate's output length, not the raw input.
+    // No chunk marker anywhere in here, so extractModernContainerChunks
+    // never finds anything to decompress in the first place.
     const plainBytes = new TextEncoder().encode(
       "not a SolidWorks file, no deflate stream anywhere in here",
     );
@@ -292,10 +335,12 @@ describe("SolidWorksDecodeEngine", () => {
   });
 
   it("reports tessdata-decode-failed when a stream is found but no tessellation block decodes from it", () => {
-    // A real TessData stream (extractTessDataStreams will find and keep
+    // A real TessData chunk (extractTessDataStreams will find and keep
     // it), but with no "4, 8, 2" header anywhere inside — so
     // decodeTessDataStream finds nothing to build a mesh from.
-    const fileBytes = deflate(tessDataPayload(1_000));
+    const fileBytes = buildSolidWorksFile([
+      { name: "Contents/DisplayLists", payload: tessDataPayload(1_000) },
+    ]);
 
     const model = new SolidWorksDecodeEngine().transform(fileBytes);
 
@@ -322,7 +367,9 @@ describe("SolidWorksDecodeEngine", () => {
     const withMagic = new Uint8Array(TESS_DATA_MAGIC.length + block.length);
     withMagic.set(new TextEncoder().encode(TESS_DATA_MAGIC), 0);
     withMagic.set(block, TESS_DATA_MAGIC.length);
-    const fileBytes = deflate(withMagic);
+    const fileBytes = buildSolidWorksFile([
+      { name: "Contents/DisplayLists", payload: withMagic },
+    ]);
 
     const model = new SolidWorksDecodeEngine().transform(fileBytes);
 
@@ -346,30 +393,26 @@ describe("SolidWorksDecodeEngine", () => {
     expect(model.tree).toEqual([{ meshIndices: [0], children: [] }]);
   });
 
-  it(
-    "reproduces the STEP-measured bounding box for a real NIST part, matching the already-committed demo/nist-ctc-01.json",
-    () => {
-      const model = new SolidWorksDecodeEngine().transform(
-        readSldprt("nist_ctc_01_asme1_rd_sw1802.SLDPRT"),
-      );
+  it("reproduces the STEP-measured bounding box for a real NIST part, matching the already-committed demo/nist-ctc-01.json", () => {
+    const model = new SolidWorksDecodeEngine().transform(
+      readSldprt("nist_ctc_01_asme1_rd_sw1802.SLDPRT"),
+    );
 
-      expect(model.diagnostics).toEqual([]);
-      expect(model.meshes).toHaveLength(1);
-      const mesh = model.meshes[0];
-      if (mesh === undefined) {
-        throw new Error("expected transform() to return one mesh");
-      }
-      expect(mesh.positions).toHaveLength(3_396 * 3);
-      expect(mesh.indices).toHaveLength(2_296 * 3);
+    expect(model.diagnostics).toEqual([]);
+    expect(model.meshes).toHaveLength(1);
+    const mesh = model.meshes[0];
+    if (mesh === undefined) {
+      throw new Error("expected transform() to return one mesh");
+    }
+    expect(mesh.positions).toHaveLength(3_396 * 3);
+    expect(mesh.indices).toHaveLength(2_296 * 3);
 
-      // demo/nist-ctc-01.json (already committed — generated by
-      // research/d9-decode.py) records this exact box: bboxMm [800.0,
-      // 450.0, 150.0].
-      const [gotX, gotY, gotZ] = extents(mesh.positions);
-      expectWithinTolerance(gotX, 800.0);
-      expectWithinTolerance(gotY, 450.0);
-      expectWithinTolerance(gotZ, 150.0);
-    },
-    REAL_FILE_TIMEOUT_MS,
-  );
+    // demo/nist-ctc-01.json (already committed — generated by
+    // research/d9-decode.py) records this exact box: bboxMm [800.0,
+    // 450.0, 150.0].
+    const [gotX, gotY, gotZ] = extents(mesh.positions);
+    expectWithinTolerance(gotX, 800.0);
+    expectWithinTolerance(gotY, 450.0);
+    expectWithinTolerance(gotZ, 150.0);
+  });
 });

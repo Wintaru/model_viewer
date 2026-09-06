@@ -279,6 +279,15 @@ Blocking findings were fixed. These were not.
   not fixed now because it's optimizing an already-reference-matching cost,
   not closing a correctness gap.
 
+  **Resolved 2026-09-06, but not by the fix this note proposed.** A skip-
+  forward optimization of the blind scan turned out not to be the answer —
+  `extractTessDataStreams` no longer does a blind scan at all.
+  `SolidWorksContainerUtil.ts` reads the file's real container structure
+  directly (WAYFINDER.md's D14), found via a real open-source reader's
+  source rather than reverse-engineered from scratch. The real-fixture test
+  this note's cost was measured against now runs in single-digit
+  milliseconds, no extended timeout needed.
+
 ## From building slice 3 commit 4 — SolidWorksDecodeEngine.transform() (2026-09-05)
 
 - **`SPEC.md` section 10 slice 1 says the TypeScript decoder should
