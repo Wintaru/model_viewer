@@ -530,6 +530,59 @@ Each slice is independently shippable.
    few dozen bytes) when it was drawn.
 5. **Export and cache.** `ModelExportManager` with glTF out, plus
    `ModelCacheAccessor` and the key derivation.
+
+   Broken down to commits, same discipline as slices 1 to 4: each row's
+   "leaves green" claim is what makes the plan checkable rather than just
+   listed.
+
+   | # | Commit | Leaves green because |
+   | --- | --- | --- |
+   | 1 | `Utility`: `HashUtil` + tests | a generic SHA-256 digest of bytes over the Web Crypto API (`crypto.subtle.digest`), returned as lowercase hex — ARCHITECTURE.md section 6a's `cacheKey = hash(file bytes) + …`. Takes no dependency on `Common` or any other layer, so it stays a leaf. Tests cover known SHA-256 vectors (empty input, `"abc"`), that identical bytes hash identically, and that a single changed byte changes the digest. |
+   | 2 | `Accessor`: `ModelCacheAccessor` interface | interface only, same shape as slice 1 commit 6's `ModelSource` — `Load` and `Store`, ARCHITECTURE.md section 6a's exact semantic methods, public and host-implemented since the library has no idea what storage a host has |
+   | 3 | `Engine`: `GltfEncodeEngine` + tests | a decoded model to glTF bytes (SPEC.md section 3): `transform(model): Uint8Array`, pure and synchronous like `FormatSniffEngine`, no I/O of its own. Emits a single-file, embedded glTF 2.0 document (one `buffer` holding every mesh's positions/normals/indices, referenced by a base64 `data:` URI) rather than a binary `.glb` — simpler to construct and to verify byte-for-byte in a test, at the cost of a larger export than a packed binary would produce. **Scope: geometry and the node tree only** — no materials, vertex colors, metadata or embedded preview in this pass; `DecodedMesh.color`/`FaceRange.color` and `DecodedModel.metadata`/`preview` go unexported for now, logged in REVIEW-BACKLOG.md the same way slice 1 deferred OBJ/PLY/glTF/3MF. Tested against a small hand-built `DecodedModel` (two one-triangle meshes, a two-node tree with one translated child): asserts the emitted JSON's accessor counts, `min`/`max` bounds and `bufferView` byte math are correct, and that decoding the base64 buffer back reproduces the exact input `positions`/`normals`/`indices` bytes. |
+   | 4 | `Manager`: `ModelExportManager` + tests | the whole public surface for export (SPEC.md section 3): `export(model, { format: 'gltf' }): Promise<Blob>`, wrapping `GltfEncodeEngine`'s bytes in a `Blob` (`model/gltf+json`) for host convenience — the same shell-plus-injected-engine shape `ModelLoadManager` already uses for `sniffer`/`meshDecoder`. Kept out of `ModelLoadManager` entirely — no import between them in either direction — because Manager must never call Manager. |
+   | 5 | `Client`: export `ModelExportManager` from `src/index.ts`, as `ModelExporter` | same renaming precedent as slice 1 commit 12's `ModelLoadManager` → `ModelLoader` — a caller has no reason to know iDesign layer vocabulary. **Resolves a real gap in SPEC.md section 7a's sketch**, which shows one `loader` object exposing both `.load()` and `.export()`: giving `ModelLoader` an `export()` method would mean `ModelLoadManager` importing `ModelExportManager`, exactly the Manager-to-Manager edge `.dependency-cruiser.js`'s `no-manager-to-manager` rule exists to fail the build on. The real public surface is two small objects — `new ModelLoader()` and `new ModelExporter()` — not one. Logged in REVIEW-BACKLOG.md; SPEC.md section 7a's code sample is stale on this one line the same way it was already known to drift elsewhere. |
+   | 6 | `Manager`: wire `ModelCacheAccessor` and a per-format decoder-version table into `ModelLoadManager.load()` + tests | the check-then-decode-then-store policy ARCHITECTURE.md section 6a assigns to `ModelLoadManager`: `cacheKey = hash(bytes) + format + decoderVersion` (`HashUtil`, commit 1), checked before decoding and stored after a miss, when a `ModelCacheAccessor` is supplied. `decoderVersion` comes from a small, manually-maintained `DECODER_VERSIONS` map, not a derived value — ARCHITECTURE.md's own justification for including it at all is that a decode-logic fix (SolidWorks's 3-of-11-to-6-of-11 jump) must invalidate every prior cache entry, which only a human bumping a constant when that logic changes can guarantee. No `optionsHash` term: `load()` takes no options parameter to hash, and adding one speculatively would be building for a requirement that doesn't exist yet. Tests inject a fake in-memory cache and a call-counting fake decoder, asserting a second `load()` of identical bytes returns the cached model without invoking the decoder again, and that bumping the version constant changes the key. |
+   | 7 | Demo: extend `library-demo` to export and cache | loads the STL cube twice through an in-memory `ModelCacheAccessor` to show the second load skip decoding, then exports one loaded model through `ModelExporter` and offers the result for download — proves the slice end to end in a real browser, the same treatment every prior slice's final commit gives its own new surface. |
+
+   **Why geometry first, everything else deferred, for `GltfEncodeEngine`.**
+   Materials, per-face color and embedded metadata are all real v1-listed
+   capabilities (`DecodedMesh.color`, `DecodedModel.metadata`), but none of
+   them changes the shape of the encoder's core job — turning typed arrays
+   into accessors and bufferViews — so building them alongside risks the
+   same "mixing two concerns" slice 2 commit 6 already declined to do for
+   `'stl'` dispatch.
+
+   **Why an embedded `.gltf`, not a binary `.glb`.** A `.glb` packs a JSON
+   chunk and a binary chunk behind 4-byte-aligned, length-prefixed headers —
+   more compact, but every byte-for-byte correctness check in commit 3's
+   tests would need to parse that binary framing before it could even get to
+   the accessor math being tested. An embedded, single-buffer `.gltf` is
+   valid glTF 2.0, loads in every real glTF viewer, and lets the test assert
+   directly against JSON plus a decoded base64 string. Revisit for a `.glb`
+   mode once the size of an exported file is a measured problem, not a
+   hypothetical one — this project's own working method throughout
+   `DECISIONS.md`.
+
+   **Why decoder version is a hand-maintained table, not derived from each
+   decoder.** ARCHITECTURE.md section 6a's cache-key design exists
+   specifically because a decode-logic change can silently invalidate every
+   previously cached result with nothing about the *file* changing — the
+   SolidWorks 3-of-11-to-6-of-11 jump is the concrete example it cites. No
+   decoder class currently exposes anything resembling a version, and
+   computing one automatically (hashing each decoder's own compiled source,
+   say) would be new machinery this slice doesn't need to invent. A single
+   constant `ModelLoadManager` owns and bumps by hand, next to a comment
+   pointing at this exact story, is the smallest thing that actually
+   satisfies the requirement.
+
+   **Why the etag fast path from ARCHITECTURE.md section 6a stays out of
+   commit 6.** Checking the cache before downloading needs a `ModelSource`
+   that actually sets `etag` — none of the four built-in sources do, so
+   there is nothing yet to verify that path against. Deferred and logged in
+   REVIEW-BACKLOG.md alongside the `optionsHash` gap above, both to close
+   together whenever a real caller or a real options parameter exists.
+
 6. **DXF.** Needs D6 settled first, because the 2D viewing model is open.
 
 ## 11. Still open
