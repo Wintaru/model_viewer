@@ -109,6 +109,21 @@ which block building:
 - Test more SolidWorks versions, and test SLDASM. Only parts are proven, and
   only on 2018 and 2020.
 
+### IGES follow-up `[research]` — not blocking v1
+
+IGES itself was already in v1's scope (see "Formats in v1" above) — this is
+the one gap left in delivering it, not a new decision. Detection and
+decoding are both real and tested (`research/FINDINGS.md` section 10):
+`FormatSniffEngine` recognizes real IGES files, and `OcctDecodeEngine`
+calls `ReadIgesFile` and reports an honest empty result when a file holds
+no solid or surface geometry — verified against three real IGES 5.3
+samples.
+
+What remains: none of those three samples hold real solid geometry, so a
+positive decode — a real IGES file whose geometry actually produces
+triangles — is unverified. Finding one with clean, committable licensing
+(not a CAD marketplace with unclear per-file rights) is the open task.
+
 ### D4 — Does PMI belong in the product? `[research]`
 
 `occt-import-js` returns no PMI at all. The NIST files carry full GD&T data,

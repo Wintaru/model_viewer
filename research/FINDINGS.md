@@ -304,6 +304,48 @@ compresses losslessly, decodes faster, and matches Draco when combined with
 gzip. Meshopt is the better default for CAD, because CAD users care about
 dimensional accuracy.
 
+## 10. IGES: format detection works; no committable solid sample yet
+
+Section 1 already found that `occt-import-js` reads IGES in principle
+(`ReadIgesFile`, alongside `ReadStepFile`). This section closes the two
+gaps that stayed open after that: nothing in this repository detected an
+IGES file, and nothing had ever actually called `ReadIgesFile`.
+
+**Detection.** Real IGES files (not STEP's `ISO-10303-21;` header) use a
+fixed-width ASCII layout: every record is exactly 80 columns, and the
+section letter sits at column 73. A well-formed file's first record is
+always its Start section, letter `S`. Confirmed directly against three
+real IGES 5.3 files (see "Sample files" below) — every one begins with 72
+columns of content, then `S`, then a right-justified sequence number
+filling the record out to 80 columns, followed by a line break.
+`FormatSniffEngine` checks exactly that: byte 72 is `S`, and byte 80 is a
+line-ending byte.
+
+**Decoding.** `ReadIgesFile` takes the same bytes and returns the same
+result shape as `ReadStepFile` — confirmed by calling it directly against
+all three sample files, not assumed from the STEP behavior. All three
+report `success: true` with zero meshes: they are old IGES example files
+holding only wireframe entities (points, lines, circular arcs, one
+drafting layout), with no solid or surface for OCCT to mesh. That is a
+real, honest empty result, the same failure mode section 3 already
+documents for AP242 tessellated STEP files (decision D5) — not a bug in
+detection or in `ReadIgesFile` itself.
+
+**What is still open.** No file among these three, nor anywhere else in
+this repository, contains real solid or surface geometry. A positive
+decode — a real IGES file whose geometry actually produces triangles
+through `ReadIgesFile` — has not been verified. Finding one with clean,
+committable licensing (not a CAD marketplace with unclear per-file rights)
+is open follow-up work.
+
+**Sample files.** Three small IGES 5.3 files, `assets/iges/` (fetched by
+`scripts/fetch-assets.sh`, not committed — see `assets/README.md`).
+Sourced from a National Bureau of Standards / NIST-attributed example
+archive, the same standards body that published the IGES specification
+itself. `ex1.iges` is an integrated-circuit layout example from the IGES
+4.0 specification's own appendix; `ex2.iges` and `ex3.iges` are drafting
+and mechanical-drawing examples. None hold a solid or surface entity.
+
 ## Sources
 
 - [occt-import-js](https://github.com/kovacsv/occt-import-js) ·
@@ -319,6 +361,7 @@ dimensional accuracy.
 - [Zoo Design API](https://zoo.dev/design-api)
 - [APS business model](https://aps.autodesk.com/blog/aps-business-model-evolution)
 - [NIST MBE PMI downloads](https://www.nist.gov/ctl/smart-connected-systems-division/smart-connected-manufacturing-systems-group/mbe-pmi-0)
+- [IGES sample files](https://people.math.sc.edu/burkardt/data/iges/iges.html)
 - [dxf-viewer](https://github.com/vagran/dxf-viewer)
 - [ABC dataset](https://deep-geometry.github.io/abc-dataset/) ·
   [step.parts](https://step.parts)

@@ -1,17 +1,18 @@
 /**
  * Minimal ambient types for `occt-import-js` — it ships no `.d.ts` of its
  * own (checked `node_modules/occt-import-js`: package.json, JS and the
- * `.wasm` binary, nothing else). Declares only `ReadStepFile` and the
- * result shape this repository has actually run and inspected against the
- * NIST STEP corpus (`research/probe-step.mjs`, re-confirmed field-by-field
- * while building `OcctDecodeEngine` — see DECISIONS.md's slice-2 commit-4
- * entry for what was checked and how).
+ * `.wasm` binary, nothing else). Declares `ReadStepFile` and `ReadIgesFile`,
+ * and the result shape this repository has actually run and inspected
+ * against real files: the NIST STEP corpus for `ReadStepFile`
+ * (`research/probe-step.mjs`, re-confirmed field-by-field while building
+ * `OcctDecodeEngine` — see DECISIONS.md's slice-2 commit-4 entry), and three
+ * real IGES 5.3 files for `ReadIgesFile` (`research/FINDINGS.md`) —
+ * confirmed to return the identical `OcctReadResult` shape.
  *
- * The package also exports `ReadIgesFile` and `ReadBrepFile`. Deliberately
- * not declared here, for the same reason IGES decoding itself is deferred
- * (REVIEW-BACKLOG.md): nothing in this repository has ever run them or
- * inspected their result shape, so typing them now would be a guess, not a
- * measurement.
+ * The package also exports `ReadBrepFile`. Deliberately not declared here,
+ * for the same reason it stayed out until now for IGES: nothing in this
+ * repository has ever run it or inspected its result shape, so typing it
+ * now would be a guess, not a measurement.
  */
 declare module "occt-import-js" {
   export interface OcctReadParams {
@@ -58,6 +59,10 @@ declare module "occt-import-js" {
 
   export interface OcctModule {
     ReadStepFile(
+      content: Uint8Array,
+      params: OcctReadParams | null,
+    ): OcctReadResult;
+    ReadIgesFile(
       content: Uint8Array,
       params: OcctReadParams | null,
     ): OcctReadResult;

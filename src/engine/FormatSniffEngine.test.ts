@@ -12,6 +12,12 @@ function binaryStl(triangleCount: number): Uint8Array {
   return bytes;
 }
 
+// One fixed-width, 80-column IGES record: 72 columns of content, then the
+// section letter, then a 7-column right-justified sequence number.
+function igesLine(sectionLetter: string): string {
+  return "x".repeat(72) + sectionLetter + "      1";
+}
+
 describe("FormatSniffEngine", () => {
   const sniff = new FormatSniffEngine();
 
@@ -21,6 +27,27 @@ describe("FormatSniffEngine", () => {
 
   it("recognizes a STEP file with leading whitespace", () => {
     expect(sniff.transform(ascii("  \nISO-10303-21;\n"))).toBe("step");
+  });
+
+  it("recognizes an IGES file by its column-73 section letter", () => {
+    const bytes = ascii(`${igesLine("S")}\n${igesLine("S")}\n`);
+
+    expect(sniff.transform(bytes)).toBe("iges");
+  });
+
+  it("does not recognize a fixed-width buffer whose column-73 letter isn't 'S'", () => {
+    // A real file's first record is always its Start section ('S') — a
+    // buffer starting mid-file, with some other section letter, isn't
+    // mistaken for a whole IGES file.
+    const bytes = ascii(`${igesLine("G")}\n`);
+
+    expect(sniff.transform(bytes)).toBeUndefined();
+  });
+
+  it("does not recognize an 80-column-shaped buffer with no line break at column 81", () => {
+    const bytes = ascii(`${igesLine("S")}X`);
+
+    expect(sniff.transform(bytes)).toBeUndefined();
   });
 
   it("recognizes a SolidWorks container by bytes 4-7", () => {

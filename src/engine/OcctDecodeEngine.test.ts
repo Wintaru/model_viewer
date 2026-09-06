@@ -13,6 +13,7 @@ import { OcctDecodeEngine } from "./OcctDecodeEngine";
 // different one written just for tests.
 const WASM_PATH = "node_modules/occt-import-js/dist/occt-import-js.wasm";
 const STEP_DIR = "assets/step";
+const IGES_DIR = "assets/iges";
 
 function realWasmAssets(): WasmAssetAccessor {
   const bytes = readFileSync(WASM_PATH);
@@ -34,6 +35,10 @@ function realWasmAssets(): WasmAssetAccessor {
 
 function readStepFile(name: string): Uint8Array {
   return new Uint8Array(readFileSync(`${STEP_DIR}/${name}`));
+}
+
+function readIgesFile(name: string): Uint8Array {
+  return new Uint8Array(readFileSync(`${IGES_DIR}/${name}`));
 }
 
 // Instantiating occt-import-js compiles a multi-MB wasm module — the
@@ -126,8 +131,11 @@ describe("OcctDecodeEngine", () => {
   );
 
   it(
-    "reports occt-read-failed for bytes that are not a STEP file",
+    "reports occt-read-failed for bytes that don't look like STEP either (routed to ReadIgesFile)",
     async () => {
+      // No ISO-10303-21; header, so transform() routes these bytes to
+      // ReadIgesFile rather than ReadStepFile — exercising that reader's
+      // own reject-on-garbage behavior, not the STEP one below.
       const engine = new OcctDecodeEngine(realWasmAssets());
 
       const model = await engine.transform(new Uint8Array([1, 2, 3, 4]));
@@ -139,6 +147,59 @@ describe("OcctDecodeEngine", () => {
           code: "occt-read-failed",
         }),
       );
+    },
+    OCCT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "reports occt-read-failed for a STEP-signed file ReadStepFile can't parse",
+    async () => {
+      // Starts with the real STEP signature, so transform() routes this to
+      // ReadStepFile specifically, isolating that reader's own
+      // reject-on-garbage behavior from ReadIgesFile's above. Confirmed by
+      // hand: OCCT returns success: false (not a throw) for this input.
+      const engine = new OcctDecodeEngine(realWasmAssets());
+
+      const model = await engine.transform(
+        new TextEncoder().encode("ISO-10303-21;\nnot a real STEP file\n"),
+      );
+
+      expect(model.meshes).toEqual([]);
+      expect(model.diagnostics).toContainEqual(
+        expect.objectContaining({
+          severity: "error",
+          code: "occt-read-failed",
+        }),
+      );
+    },
+    OCCT_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "recognizes real IGES files and reports occt-empty-result for them",
+    async () => {
+      // assets/iges (research/FINDINGS.md section 10, WAYFINDER.md's IGES
+      // follow-up): three real IGES 5.3 files, none holding solid or
+      // surface geometry — this
+      // proves transform() correctly routes to ReadIgesFile (not
+      // ReadStepFile, which would reject these outright) and that the
+      // honest-empty-result diagnostic applies to IGES the same way it
+      // already does to STEP (D5). A real positive decode — an IGES file
+      // whose solid geometry actually produces triangles — is still open
+      // follow-up work; see assets/README.md.
+      const engine = new OcctDecodeEngine(realWasmAssets());
+
+      for (const name of ["ex1.iges", "ex2.iges", "ex3.iges"]) {
+        const model = await engine.transform(readIgesFile(name));
+
+        expect(model.meshes).toEqual([]);
+        expect(model.diagnostics).toContainEqual(
+          expect.objectContaining({
+            severity: "error",
+            code: "occt-empty-result",
+          }),
+        );
+      }
     },
     OCCT_TEST_TIMEOUT_MS,
   );

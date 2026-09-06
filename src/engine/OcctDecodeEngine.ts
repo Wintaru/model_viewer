@@ -12,22 +12,24 @@ import {
 } from "../common/DecodedModel";
 import type { FaceRange } from "../common/FaceRange";
 import type { SceneNode } from "../common/SceneNode";
+import { looksLikeStepFile } from "../utility/AsciiUtil";
 
 const TRIANGLE_INDEX_STRIDE = 3;
 
 /**
  * Bytes to a {@link DecodedModel} through OCCT (`occt-import-js`), the WASM
  * build of OpenCascade — SPEC.md section 10 slice 2, ARCHITECTURE.md
- * section 3. **STEP only.** See `occt-import-js.d.ts`'s doc comment and
- * REVIEW-BACKLOG.md for why IGES stays out of this engine until a real
- * fixture exists to verify a decode against.
+ * section 3. Reads both STEP and IGES: the same wasm module backs both
+ * readers, so one engine covers both rather than duplicating the
+ * worker/proxy/registry wiring for a second, near-identical engine — see
+ * `research/FINDINGS.md` for how IGES support was verified.
  *
  * Runs `occt-import-js` in-process, on whichever thread this is
  * constructed on — worker-side in production (`OcctDecodeEngineProxy` owns
  * getting it there, arriving in commit 5), directly under Vitest in this
- * file's own tests, against the real NIST STEP corpus. Sources its wasm
- * bytes through an injected `WasmAssetAccessor` rather than letting
- * `occt-import-js` fetch or locate the asset itself.
+ * file's own tests, against the real NIST STEP corpus and three real IGES
+ * files. Sources its wasm bytes through an injected `WasmAssetAccessor`
+ * rather than letting `occt-import-js` fetch or locate the asset itself.
  */
 export class OcctDecodeEngine {
   private occtModule: Promise<OcctModule> | undefined;
@@ -36,10 +38,13 @@ export class OcctDecodeEngine {
 
   async transform(bytes: Uint8Array): Promise<DecodedModel> {
     const occt = await this.getOcctModule();
+    const isStep = looksLikeStepFile(bytes);
 
     let result;
     try {
-      result = occt.ReadStepFile(bytes, null);
+      result = isStep
+        ? occt.ReadStepFile(bytes, null)
+        : occt.ReadIgesFile(bytes, null);
     } catch (error) {
       return createEmptyDecodedModel({
         severity: "error",
@@ -57,15 +62,19 @@ export class OcctDecodeEngine {
     }
     if (result.meshes.length === 0) {
       // ARCHITECTURE.md section 7: a success report with zero meshes is a
-      // real, measured failure mode — an AP242 file using a tessellated
-      // representation this OCCT import path doesn't return (WAYFINDER.md
-      // decision D5). Silent success here would be the worst outcome a
-      // viewer could have.
+      // real, measured failure mode — silent success here would be the
+      // worst outcome a viewer could have. For a STEP file this is
+      // typically an AP242 file using a tessellated representation this
+      // OCCT import path doesn't return (WAYFINDER.md decision D5). For
+      // IGES, plenty of real files (research/FINDINGS.md: all three this
+      // engine has been verified against) hold only wireframe entities —
+      // points, lines, arcs — with no solid or surface for OCCT to mesh.
       return createEmptyDecodedModel({
         severity: "error",
         code: "occt-empty-result",
-        message:
-          "OCCT reported success but returned no geometry — likely an AP242 file using a tessellated representation this version cannot read. See WAYFINDER.md decision D5.",
+        message: isStep
+          ? "OCCT reported success but returned no geometry — likely an AP242 file using a tessellated representation this version cannot read. See WAYFINDER.md decision D5."
+          : "OCCT reported success but returned no geometry — likely an IGES file holding only wireframe entities (points, lines, arcs) with no solid or surface to mesh.",
       });
     }
 

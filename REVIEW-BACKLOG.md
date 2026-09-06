@@ -150,12 +150,12 @@ Blocking findings were fixed. These were not.
   **Resolved for the ASCII case in commit 10:** `MeshDecodeEngine` reports
   an `ascii-stl-unsupported` error `Diagnostic` rather than mis-parsing it.
   OBJ/PLY/glTF/3MF are still unimplemented and undetected either way.
-- **`FormatSniffEngine` does not detect IGES.** The `ISO-10303-21;` header it
-  checks is STEP's; real IGES files use fixed-width 80-column card records
-  with a section letter at column 73, an unrelated and more involved check.
-  No IGES file exists anywhere in this repository to verify a heuristic
-  against. Write real detection once one does — from the NIST corpus, or
-  once `OcctDecodeEngine` (slice 2) is being tested against one.
+- **`FormatSniffEngine` does not detect IGES.** — **Resolved:** real IGES
+  files were found (research/FINDINGS.md section 10), and detection is
+  real, verified against three of them. What remains is the positive decode
+  case, not detection: none of the three hold solid or surface geometry, so
+  a real solid-geometry decode is still unverified. See WAYFINDER.md's IGES
+  follow-up.
 - **`FormatSniffEngine` cannot recognize a large binary STL from a short
   "sniff first" prefix.** Binary STL's only signature is a triangle count at
   offset 80 that must make the total length add up — there is no magic
@@ -205,12 +205,10 @@ Blocking findings were fixed. These were not.
   target shape, not the final state. Retrofit `'stl'` onto the registry
   whenever it's next touched, rather than as a standalone change — see
   `DECISIONS.md`'s slice-2 planning entry.
-- **IGES still undetected and undecoded.** Unchanged from the entry above
-  this section: no IGES file exists anywhere in this repository. Slice 2's
-  `OcctDecodeEngine` implements `ReadStepFile` only for the same reason
-  `FormatSniffEngine` still lacks IGES detection — nothing to verify a
-  decode against. The two gaps should close in the same change, whenever a
-  real IGES fixture becomes available.
+- **IGES still undetected and undecoded.** — **Resolved:** both closed
+  together, as this entry anticipated. `OcctDecodeEngine` now calls
+  `ReadIgesFile` (research/FINDINGS.md section 10); see the resolved entry
+  above for what remains (a solid-geometry decode, still unverified).
 - **`WasmAssetAccessor`'s default-`fetch` binding fix has no regression
   test.** Code review of commit 3 caught a real bug: the default `fetchImpl`
   captured the bare global `fetch` reference, which real browsers can

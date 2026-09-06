@@ -13,7 +13,7 @@ assets="$root/assets"
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-mkdir -p "$assets"/{step,solidworks,mesh,gltf,2d}
+mkdir -p "$assets"/{step,iges,solidworks,mesh,gltf,2d}
 
 have() { [ -n "$(ls -A "$1" 2>/dev/null)" ]; }
 
@@ -49,6 +49,19 @@ fi
   echo "Downloading DamagedHelmet.glb..."
   curl -fsSL -o "$assets/gltf/DamagedHelmet.glb" \
     "https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Assets/main/Models/DamagedHelmet/glTF-Binary/DamagedHelmet.glb"
+}
+
+# --- IGES samples --------------------------------------------------------
+# NIST-attributed reference files (John Burkardt's public data archive) —
+# see assets/README.md for provenance. Small and few, unlike the other
+# corpora above, so each is fetched individually rather than as one archive.
+have "$assets/iges" || {
+  echo "Downloading IGES samples..."
+  for name in ex1.iges ex2.iges ex3.iges; do
+    curl -fsSL -o "$assets/iges/$name" \
+      "https://people.math.sc.edu/burkardt/data/iges/$name"
+  done
+  echo "  IGES:   $(ls -1 "$assets/iges" | wc -l | tr -d ' ') files"
 }
 
 echo

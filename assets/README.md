@@ -1,6 +1,7 @@
 # Demo and test assets
 
-Downloaded 2026-09-04. Total size 75 MB.
+Downloaded 2026-09-04. Total size 75 MB. IGES samples added 2026-09-06 (57
+KB — negligible against the total, listed separately below).
 
 ## `step/` — 33 files, 52 MB
 
@@ -17,6 +18,22 @@ Source: [NIST MBE PMI downloads](https://www.nist.gov/ctl/smart-connected-system
 
 License: NIST states the files "can be used without any restrictions". NIST
 asks for acknowledgement. Do not use the NIST logo.
+
+## `iges/` — 3 files, 57 KB
+
+Small reference files from an NBS/NIST-attributed IGES example archive.
+None hold solid or surface geometry — they're wireframe entities (points,
+lines, arcs, plus one drafting layout) — so they verify format detection
+and OCCT's honest empty-result path (`OcctDecodeEngine`'s
+`occt-empty-result` diagnostic), not a real solid decode. Finding a
+solid-geometry IGES sample with clean, committable licensing is open
+follow-up work — see `WAYFINDER.md`.
+
+Source: [people.math.sc.edu/burkardt/data/iges](https://people.math.sc.edu/burkardt/data/iges/iges.html)
+
+License: distributed under the GNU LGPL license per that archive's own
+page; the files themselves are IGES specification reference examples
+originally published by the National Bureau of Standards (now NIST).
 
 ## `solidworks/` — 11 files, 7.7 MB
 

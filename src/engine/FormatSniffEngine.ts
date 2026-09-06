@@ -1,13 +1,28 @@
 import type { FormatId } from "../common/FormatId";
-import { startsWithAsciiCaseInsensitive } from "../utility/AsciiUtil";
+import {
+  isAsciiWhitespace,
+  looksLikeStepFile,
+  skipLeadingAsciiWhitespace,
+  startsWithAscii,
+  startsWithAsciiCaseInsensitive,
+} from "../utility/AsciiUtil";
 import {
   readFixedRecordCount,
   type FixedRecordLayout,
 } from "../utility/BinaryLayoutUtil";
 
-const STEP_SIGNATURE = "ISO-10303-21;";
 const DXF_SECTION_KEYWORD = "SECTION";
 const ASCII_ZERO = 0x30;
+
+// IGES's fixed-width ASCII layout: every record is exactly 80 columns, the
+// section letter sits at column 73 (index 72), and a well-formed file's
+// very first record is always its Start section, letter 'S'. Confirmed
+// against three real IGES 5.3 files (research/FINDINGS.md) — every one
+// begins "...<69 chars>      S      1", the section letter followed by a
+// right-justified sequence number filling out the record to 80 columns.
+const IGES_RECORD_WIDTH = 80;
+const IGES_SECTION_LETTER_COLUMN = 72;
+const IGES_START_SECTION_LETTER = 0x53; // 'S'
 
 const SOLIDWORKS_SIGNATURE_OFFSET = 4;
 const SOLIDWORKS_SIGNATURE = [0x00, 0x00, 0x00, 0x04];
@@ -21,12 +36,6 @@ const STL_LAYOUT: FixedRecordLayout = { headerSize: 80, recordSize: 50 };
  * the one that holds across the whole NIST corpus.
  *
  * Known, deliberate gaps, not oversights:
- * - **IGES is not detected.** The diagram lumps it in with STEP under one
- *   arrow, but real IGES files don't carry STEP's `ISO-10303-21;` header —
- *   they use fixed-width 80-column card records with a section letter at
- *   column 73, a different and more involved check. No IGES file exists
- *   anywhere in this repository to verify a heuristic against, so this
- *   ships undetected rather than guessed. See REVIEW-BACKLOG.md.
  * - **Binary STL is only detected when `transform` receives the whole
  *   file.** Its only signature is a triangle count at offset 80 that must
  *   make the total length add up — there is no magic prefix. Given only a
@@ -40,8 +49,11 @@ const STL_LAYOUT: FixedRecordLayout = { headerSize: 80, recordSize: 50 };
  */
 export class FormatSniffEngine {
   transform(bytes: Uint8Array): FormatId | undefined {
-    if (looksLikeStep(bytes)) {
+    if (looksLikeStepFile(bytes)) {
       return "step";
+    }
+    if (looksLikeIges(bytes)) {
+      return "iges";
     }
     if (looksLikeSolidWorks(bytes)) {
       return "solidworks";
@@ -56,12 +68,15 @@ export class FormatSniffEngine {
   }
 }
 
-function looksLikeStep(bytes: Uint8Array): boolean {
-  return startsWithAscii(
-    bytes,
-    STEP_SIGNATURE,
-    skipLeadingAsciiWhitespace(bytes),
-  );
+function looksLikeIges(bytes: Uint8Array): boolean {
+  if (bytes.byteLength <= IGES_RECORD_WIDTH) {
+    return false;
+  }
+  if (bytes[IGES_SECTION_LETTER_COLUMN] !== IGES_START_SECTION_LETTER) {
+    return false;
+  }
+  const terminator = bytes[IGES_RECORD_WIDTH];
+  return terminator !== undefined && isAsciiLineEnd(terminator);
 }
 
 function looksLikeSolidWorks(bytes: Uint8Array): boolean {
@@ -104,34 +119,6 @@ function looksLikeBinaryStl(bytes: Uint8Array): boolean {
   return readFixedRecordCount(bytes, STL_LAYOUT) !== undefined;
 }
 
-function startsWithAscii(
-  bytes: Uint8Array,
-  text: string,
-  offset: number,
-): boolean {
-  if (bytes.byteLength < offset + text.length) {
-    return false;
-  }
-  for (let i = 0; i < text.length; i++) {
-    if (bytes[offset + i] !== text.charCodeAt(i)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function skipLeadingAsciiWhitespace(bytes: Uint8Array, start = 0): number {
-  let i = start;
-  while (i < bytes.byteLength) {
-    const byte = bytes[i];
-    if (byte === undefined || !isAsciiWhitespace(byte)) {
-      break;
-    }
-    i++;
-  }
-  return i;
-}
-
-function isAsciiWhitespace(byte: number): boolean {
-  return byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d;
+function isAsciiLineEnd(byte: number): boolean {
+  return byte === 0x0a || byte === 0x0d;
 }

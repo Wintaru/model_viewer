@@ -37,6 +37,7 @@ import { ModuleRegistry } from "../utility/ModuleRegistry";
  */
 const DECODER_VERSIONS: Record<FormatId, string> = {
   step: "1",
+  iges: "1",
   solidworks: "1",
   stl: "1",
   dxf: "1",
@@ -228,6 +229,30 @@ export class ModelLoadManager {
       // decode diagnostic and a rejected engine-setup failure.
       const decoder = await decoderPromise;
       return this.decodeWithCache("step", bytes, () =>
+        decoder.transform(bytes),
+      );
+    }
+    if (format === "iges") {
+      // Reuses the exact same lazily-imported OcctDecodeEngineProxy as
+      // 'step' above, under the same "step" registry key — one wasm module
+      // already serves both readers (OcctDecodeEngine.transform() picks
+      // ReadStepFile vs ReadIgesFile from the bytes themselves), so there
+      // is no reason to import and instantiate a second copy under a
+      // separate key. Only the cache-key format string differs below, so a
+      // STEP file and an IGES file never collide in the cache.
+      const decoderPromise = this.stepDecoders?.get("step");
+      markSettled(decoderPromise);
+      const bytes = await bytesPromise;
+      if (decoderPromise === undefined) {
+        return createEmptyDecodedModel({
+          severity: "error",
+          code: "occt-decoder-not-configured",
+          message:
+            "Recognized this as an IGES file, but no STEP/IGES decoder is configured on this ModelLoadManager — pass the OCCT wasm asset's URL as the third constructor argument. See ARCHITECTURE.md section 4.",
+        });
+      }
+      const decoder = await decoderPromise;
+      return this.decodeWithCache("iges", bytes, () =>
         decoder.transform(bytes),
       );
     }

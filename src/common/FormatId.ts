@@ -4,7 +4,7 @@
  * (produced by one Engine, consumed by Manager), so it lives in Common
  * rather than in `src/engine/` alongside its producer. See
  * `src/engine/FormatSniffEngine.ts` for what each id actually detects, and
- * for the formats deliberately not covered yet (IGES, and every mesh
- * format except STL).
+ * for the formats deliberately not covered yet (every mesh format except
+ * STL).
  */
-export type FormatId = "step" | "solidworks" | "stl" | "dxf";
+export type FormatId = "step" | "iges" | "solidworks" | "stl" | "dxf";
