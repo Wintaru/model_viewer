@@ -1,5 +1,6 @@
 import { fromBuffer } from "../accessor/BufferSourceAccessor";
 import { fromFile } from "../accessor/FileSourceAccessor";
+import type { ModelCacheAccessor } from "../accessor/ModelCacheAccessor";
 import type { ModelSource } from "../accessor/ModelSource";
 import { fromUrl } from "../accessor/UrlSourceAccessor";
 import {
@@ -9,7 +10,35 @@ import {
 import type { FormatId } from "../common/FormatId";
 import { FormatSniffEngine } from "../engine/FormatSniffEngine";
 import { MeshDecodeEngine } from "../engine/MeshDecodeEngine";
+import { sha256Hex } from "../utility/HashUtil";
 import { ModuleRegistry } from "../utility/ModuleRegistry";
+
+/**
+ * The three formats that actually reach a decoder — `'dxf'` sniffs
+ * successfully (since slice 1 commit 9) but has no decoder yet, so it can
+ * never reach {@link ModelLoadManager.decodeWithCache}.
+ */
+type CacheableFormatId = "step" | "solidworks" | "stl";
+
+/**
+ * A decoder-version component for the cache key (ARCHITECTURE.md section
+ * 6a: `cacheKey = hash(file bytes) + decoderName + decoderVersion +
+ * optionsHash`). Hand-maintained, not derived from each decoder: the
+ * reason a version belongs in the key at all is that a decode-logic fix
+ * must invalidate every previously cached result even though nothing
+ * about the *file* changed — ARCHITECTURE.md's own example is the
+ * SolidWorks decoder going from 3-of-11 to 6-of-11 correct NIST parts in a
+ * single change. Only a human bumping this constant when that kind of
+ * change lands can guarantee that; nothing about a decoder's own code
+ * changes size or shape in a way worth hashing automatically. Bump the
+ * relevant entry whenever a decoding Engine's *output* changes for the
+ * same input bytes.
+ */
+const DECODER_VERSIONS: Record<CacheableFormatId, string> = {
+  step: "1",
+  solidworks: "1",
+  stl: "1",
+};
 
 /**
  * Matches SPEC.md section 7's full `ModelInput`. `string | URL` route
@@ -80,6 +109,10 @@ export interface SolidWorksDecoder {
  * target shape (every format behind a dynamic import), logged in
  * REVIEW-BACKLOG.md rather than fixed here, to keep this change to the one
  * concern it's actually about.
+ *
+ * When a `ModelCacheAccessor` is supplied, a decode result is cached under
+ * a key derived from the file's content hash, the format, and a
+ * hand-maintained decoder version — see {@link decodeWithCache}.
  */
 export class ModelLoadManager {
   private readonly stepDecoders:
@@ -97,6 +130,10 @@ export class ModelLoadManager {
       "solidworks",
       SolidWorksDecoder
     > = createSolidWorksDecoders(),
+    // No real default, same as ModelSource itself: the library has no
+    // idea what storage a host has, so caching is opt-in per instance
+    // rather than on by default with nowhere real to write to.
+    private readonly cache?: ModelCacheAccessor,
   ) {
     this.stepDecoders =
       typeof stepDecoders === "string"
@@ -168,7 +205,9 @@ export class ModelLoadManager {
       // same distinction OcctDecodeEngine.ts draws between a per-file
       // decode diagnostic and a rejected engine-setup failure.
       const decoder = await decoderPromise;
-      return decoder.transform(bytes);
+      return this.decodeWithCache("step", bytes, () =>
+        decoder.transform(bytes),
+      );
     }
     if (format === "solidworks") {
       // No "not configured" branch, unlike `step` above: `solidWorksDecoders`
@@ -181,10 +220,15 @@ export class ModelLoadManager {
       markSettled(decoderPromise);
       const bytes = await bytesPromise;
       const decoder = await decoderPromise;
-      return decoder.transform(bytes);
+      return this.decodeWithCache("solidworks", bytes, () =>
+        decoder.transform(bytes),
+      );
     }
     if (format === "stl") {
-      return this.meshDecoder.transform(await bytesPromise);
+      const bytes = await bytesPromise;
+      return this.decodeWithCache("stl", bytes, () =>
+        this.meshDecoder.transform(bytes),
+      );
     }
     if (format === undefined) {
       await bytesPromise;
@@ -200,6 +244,48 @@ export class ModelLoadManager {
       code: "unsupported-format",
       message: `Recognized this as a ${format} file, but no decoder for it exists in this version.`,
     });
+  }
+
+  /**
+   * The check-cache, decode-on-a-miss, store-the-result policy
+   * ARCHITECTURE.md section 6a assigns to this Manager — the
+   * `ModelCacheAccessor` Accessor only moves a `DecodedModel` in and out
+   * of whatever storage the host chose.
+   *
+   * No etag pre-download fast path (ARCHITECTURE.md section 6a's "One
+   * wrinkle"): none of the four built-in sources set `etag` yet, so the
+   * cache key can only be computed from a content hash of bytes already
+   * in hand. That still skips the expensive part on a repeat load — the
+   * decode itself — even though the download already happened.
+   */
+  private async decodeWithCache(
+    format: CacheableFormatId,
+    bytes: Uint8Array,
+    // MeshDecodeEngine.transform() is synchronous (unlike the step/
+    // solidworks proxies' transform(), which cross a Worker); `| Promise`
+    // lets one helper serve both without forcing the synchronous one to
+    // wrap itself for no reason.
+    decode: () => DecodedModel | Promise<DecodedModel>,
+  ): Promise<DecodedModel> {
+    if (this.cache === undefined) {
+      return decode();
+    }
+    const key = `${await sha256Hex(bytes)}:${format}:${DECODER_VERSIONS[format]}`;
+    const cached = await this.cache.load(key);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const model = await decode();
+    // Not awaited: ModelCacheAccessor.store's own doc comment says a
+    // failed store must not fail the load that produced `model`, and the
+    // caller has no reason to wait on a cache write either — the `.catch`
+    // below (attached synchronously, before this function returns) is only
+    // there to keep a rejection from being reported as unhandled, the same
+    // shape `markSettled` already uses for the decoder-import promises.
+    this.cache.store(key, model).catch(() => {
+      // Intentionally empty: see comment above.
+    });
+    return model;
   }
 }
 

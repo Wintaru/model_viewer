@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fromBuffer } from "../accessor/BufferSourceAccessor";
 import type { ModelSource } from "../accessor/ModelSource";
+import type { DecodedModel } from "../common/DecodedModel";
+import { MeshDecodeEngine } from "../engine/MeshDecodeEngine";
 import { ModuleRegistry } from "../utility/ModuleRegistry";
 import {
   ModelLoadManager,
@@ -453,5 +455,150 @@ describe("ModelLoadManager", () => {
     const model = await manager.load(new Uint8Array(0));
 
     expect(model.metadata).toEqual({ source: "fake" });
+  });
+});
+
+/** A trivial in-memory `ModelCacheAccessor`, standing in for a real
+ * host-supplied one (IndexedDB, disk, …) — same "fake the public
+ * interface" approach as `fakeSniffer`/`fakeDecoder` above. */
+function inMemoryCache(): {
+  load: (key: string) => Promise<DecodedModel | undefined>;
+  store: (key: string, model: DecodedModel) => Promise<void>;
+  entries: Map<string, DecodedModel>;
+} {
+  const entries = new Map<string, DecodedModel>();
+  return {
+    entries,
+    load: (key) => Promise.resolve(entries.get(key)),
+    store: (key, model) => {
+      entries.set(key, model);
+      return Promise.resolve();
+    },
+  };
+}
+
+describe("ModelLoadManager caching", () => {
+  it("decodes once, then returns the cached model on a second load of identical bytes", async () => {
+    const cache = inMemoryCache();
+    let decodeCalls = 0;
+    const fakeMeshDecoder = {
+      transform: (): DecodedModel => {
+        decodeCalls++;
+        return {
+          units: "mm",
+          meshes: [],
+          tree: [],
+          metadata: { call: String(decodeCalls) },
+          diagnostics: [],
+        };
+      },
+    };
+    const manager = new ModelLoadManager(
+      undefined,
+      fakeMeshDecoder,
+      undefined,
+      undefined,
+      cache,
+    );
+    const bytes = binaryStl([oneTriangle]);
+
+    const first = await manager.load(bytes);
+    const second = await manager.load(bytes);
+
+    expect(decodeCalls).toBe(1);
+    expect(second).toEqual(first);
+    expect(second.metadata).toEqual({ call: "1" });
+  });
+
+  it("derives the cache key from a content hash, the format, and the decoder version", async () => {
+    const cache = inMemoryCache();
+    const manager = new ModelLoadManager(
+      undefined,
+      new MeshDecodeEngine(),
+      undefined,
+      undefined,
+      cache,
+    );
+
+    await manager.load(binaryStl([oneTriangle]));
+
+    expect([...cache.entries.keys()]).toEqual([
+      expect.stringMatching(/^[0-9a-f]{64}:stl:1$/),
+    ]);
+  });
+
+  it("still returns the decoded model even if the cache's store rejects", async () => {
+    const cache = inMemoryCache();
+    const failingStore = vi
+      .spyOn(cache, "store")
+      .mockRejectedValue(new Error("cache backend is down"));
+    const manager = new ModelLoadManager(
+      undefined,
+      new MeshDecodeEngine(),
+      undefined,
+      undefined,
+      cache,
+    );
+
+    const model = await manager.load(binaryStl([oneTriangle]));
+
+    expect(model.meshes).toHaveLength(1);
+    expect(failingStore).toHaveBeenCalledTimes(1);
+  });
+
+  it("decodes every time when no ModelCacheAccessor is supplied", async () => {
+    let decodeCalls = 0;
+    const fakeMeshDecoder = {
+      transform: (): DecodedModel => {
+        decodeCalls++;
+        return {
+          units: "mm",
+          meshes: [],
+          tree: [],
+          metadata: {},
+          diagnostics: [],
+        };
+      },
+    };
+    const manager = new ModelLoadManager(undefined, fakeMeshDecoder);
+    const bytes = binaryStl([oneTriangle]);
+
+    await manager.load(bytes);
+    await manager.load(bytes);
+
+    expect(decodeCalls).toBe(2);
+  });
+
+  it("skips calling the configured step decoder on a warm cache", async () => {
+    const cache = inMemoryCache();
+    let transformCalls = 0;
+    const fakeDecoder: StepDecoder = {
+      transform: () => {
+        transformCalls++;
+        return Promise.resolve({
+          units: "mm",
+          meshes: [],
+          tree: [],
+          metadata: {},
+          diagnostics: [],
+        });
+      },
+    };
+    const stepDecoders = new ModuleRegistry<"step", StepDecoder>({
+      step: () => Promise.resolve(fakeDecoder),
+    });
+    const manager = new ModelLoadManager(
+      undefined,
+      undefined,
+      stepDecoders,
+      undefined,
+      cache,
+    );
+    const bytes = ascii("ISO-10303-21;\nHEADER;\n");
+
+    await manager.load(bytes);
+    await manager.load(bytes);
+
+    expect(transformCalls).toBe(1);
   });
 });
