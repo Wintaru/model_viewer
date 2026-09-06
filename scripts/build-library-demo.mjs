@@ -59,6 +59,21 @@ await esbuild.build({
   external: ["fs", "path"],
 });
 
+// solidworks.worker.ts's own dependencies (SolidWorksDecodeEngine, pako) are
+// pure JS with no Node-only branch to exclude, unlike occt.worker.ts above —
+// so this bundle needs no `external` list, and there's no wasm binary to
+// copy afterward either.
+await esbuild.build({
+  entryPoints: ["src/engine/solidworks.worker.ts"],
+  outfile: "demo/solidworks.worker.bundle.js",
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  logLevel: "info",
+  platform: "browser",
+});
+
 // The OCCT wasm binary itself is never statically imported — the demo
 // passes WasmAssetAccessor a URL and it's fetched at runtime — so it only
 // needs to exist next to the demo, not be bundled. Copied rather than

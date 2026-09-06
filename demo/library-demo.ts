@@ -19,13 +19,22 @@
  *   http(s). Caught and reported in the status text rather than left as an
  *   uncaught rejection, so opening this file directly still shows the cube
  *   working exactly as it always has.
+ * - The SolidWorks part (`nist-ctc-01.SLDPRT`, slice 3 commit 7) proves the
+ *   same thing again for the native SolidWorks decoder: no wasm this time,
+ *   but still a real `Worker`, so it carries the identical `file://`
+ *   restriction and the same caught-and-reported failure mode as the STEP
+ *   half. This is the same NIST part `viewer.html`'s Python-path proof
+ *   already decodes — see demo/README.md's "the working case" screenshot —
+ *   so a known-good bounding box exists to sanity-check against by eye.
  *
  * Bundled to library-demo.bundle.js by scripts/build-library-demo.mjs into a
  * classic, non-module script — a `<script type="module">` fails to load
  * over `file://` in every major browser (each cross-file import is blocked
  * as cross-origin), which is why demo/viewer.html takes the same
- * everything-inlined approach. occt.worker.ts is bundled separately, by the
- * same script, into demo/occt.worker.bundle.js: see that script's comments.
+ * everything-inlined approach. occt.worker.ts and solidworks.worker.ts are
+ * each bundled separately, by the same script, into
+ * demo/occt.worker.bundle.js and demo/solidworks.worker.bundle.js: see that
+ * script's comments.
  */
 import {
   AmbientLight,
@@ -40,14 +49,18 @@ import {
   fromBuffer,
   ModelLoader,
   ModuleRegistry,
+  type SolidWorksDecoder,
   type StepDecoder,
 } from "../src/index";
 import { OcctDecodeEngineProxy } from "../src/engine/OcctDecodeEngineProxy";
+import { SolidWorksDecodeEngineProxy } from "../src/engine/SolidWorksDecodeEngineProxy";
 import { toThree } from "../src/three/index";
 
 const STEP_WASM_URL = "occt-import-js.wasm";
 const STEP_WORKER_URL = "occt.worker.bundle.js";
 const STEP_FILE_URL = "nist-ftc-11.stp";
+const SOLIDWORKS_WORKER_URL = "solidworks.worker.bundle.js";
+const SOLIDWORKS_FILE_URL = "nist-ctc-01.SLDPRT";
 
 interface Triangle {
   readonly normal: readonly [number, number, number];
@@ -206,6 +219,26 @@ function createStepDecoders(): ModuleRegistry<"step", StepDecoder> {
 }
 
 /**
+ * The SolidWorks half of the demo's dispatch config — same reasoning as
+ * `createStepDecoders`, minus the wasm URL: `SolidWorksDecodeEngineProxy`
+ * takes no configuration but `createWorker`, so the only thing this demo
+ * needs to override is where that worker's bundled chunk lives.
+ */
+function createSolidWorksDecoders(): ModuleRegistry<
+  "solidworks",
+  SolidWorksDecoder
+> {
+  return new ModuleRegistry<"solidworks", SolidWorksDecoder>({
+    solidworks: () =>
+      Promise.resolve(
+        new SolidWorksDecodeEngineProxy(
+          () => new Worker(SOLIDWORKS_WORKER_URL, { type: "module" }),
+        ),
+      ),
+  });
+}
+
+/**
  * Loads `nist-ftc-11.stp` and adds it to `spinning`, offset so it doesn't
  * overlap the cube. Reports the outcome by appending to `status` rather
  * than replacing it, so the cube's own line stays visible either way.
@@ -253,10 +286,54 @@ async function loadStepPart(
   }
 }
 
+/**
+ * Loads `nist-ctc-01.SLDPRT` and adds it to `spinning`, offset to the
+ * opposite side from the STEP part so all three shapes stay visually
+ * distinct. Same `file://` restriction and the same catch-and-report
+ * handling as `loadStepPart` — see that function's doc comment — since
+ * constructing a `Worker` is what throws here too, not anything specific to
+ * wasm.
+ */
+async function loadSolidWorksPart(
+  loader: ModelLoader,
+  spinning: Group,
+  status: HTMLElement,
+): Promise<void> {
+  try {
+    const response = await fetch(SOLIDWORKS_FILE_URL);
+    if (!response.ok) {
+      throw new Error(`${response.status} ${response.statusText}`);
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    const model = await loader.load(fromBuffer(bytes, "nist-ctc-01.SLDPRT"));
+
+    if (model.diagnostics.some((d) => d.severity === "error")) {
+      status.textContent += `\nSolidWorks: ${model.diagnostics.map((d) => `${d.severity}: ${d.message}`).join("; ")}`;
+      return;
+    }
+
+    const object = toThree(model);
+    object.position.set(-150, 0, 0);
+    spinning.add(object);
+    status.textContent += `\nSolidWorks: loaded ${model.meshes.length} mesh(es), ${model.tree.length} scene node(s).`;
+  } catch (error) {
+    const reason =
+      location.protocol === "file:"
+        ? "this half needs the page served over http(s), not opened as a file:// path"
+        : "unexpected failure";
+    status.textContent += `\nSolidWorks: skipped — ${reason}. (${String(error)})`;
+  }
+}
+
 async function main(): Promise<void> {
   const status = statusElement();
 
-  const loader = new ModelLoader(undefined, undefined, createStepDecoders());
+  const loader = new ModelLoader(
+    undefined,
+    undefined,
+    createStepDecoders(),
+    createSolidWorksDecoders(),
+  );
   const stl = fromBuffer(binaryStl(CUBE_TRIANGLES), "smoke-cube.stl");
   const model = await loader.load(stl);
 
@@ -299,6 +376,7 @@ async function main(): Promise<void> {
   animate(renderer, scene, camera, spinning);
 
   await loadStepPart(loader, spinning, status);
+  await loadSolidWorksPart(loader, spinning, status);
 }
 
 main().catch((error: unknown) => {

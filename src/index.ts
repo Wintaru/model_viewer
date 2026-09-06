@@ -13,6 +13,7 @@ export { fromFile } from "./accessor/FileSourceAccessor";
 export { ModelLoadManager as ModelLoader } from "./manager/ModelLoadManager";
 export type {
   ModelInput,
+  SolidWorksDecoder,
   StepDecoder,
   StepDecoderConfig,
 } from "./manager/ModelLoadManager";

@@ -29,7 +29,7 @@ Slice 1 commit 14's smoke demo, extended in slice 2 commit 7: proves
 under Vitest. This is deliberately not the designed viewer: the actual UI
 is decision D7, still open in `WAYFINDER.md`.
 
-It proves two things, with two different delivery requirements:
+It proves three things, with two different delivery requirements:
 
 - **The STL cube** — a small hand-built binary STL, no test corpus needed.
   Open `library-demo.html` directly for the same reason `viewer.html` needs
@@ -49,8 +49,19 @@ It proves two things, with two different delivery requirements:
   `file://`, this half is caught and reported in the status text
   ("STEP: skipped — …") rather than left as an uncaught rejection, so the
   cube still works exactly as it always has.
+- **A real native SolidWorks part** (`nist-ctc-01.SLDPRT`, slice 3
+  commit 7) — the same NIST part `viewer.html`'s Python-path proof already
+  decodes (see the screenshot below), now proven through the TypeScript
+  `SolidWorksDecodeEngine` instead. No `.wasm` this time, but still a real
+  `Worker`, so this half carries the identical http(s)-only restriction and
+  the identical caught-and-reported failure mode as the STEP half above.
+  **Confirmed by hand this decode genuinely takes 60-150 seconds in a real
+  browser** — the reverse-engineered scanning algorithm's cost, not a bug
+  in the demo (see `research/FINDINGS.md` and `DECISIONS.md`); the status
+  line only reports "SolidWorks: …" once that finishes.
 
-  Serve the `demo/` directory over http to see it work, for example:
+  Serve the `demo/` directory over http to see either real-format half
+  work, for example:
 
   ```
   python3 -m http.server 8000 --directory demo
@@ -66,15 +77,18 @@ pnpm run build:demo
 
 This bundles `library-demo.ts` straight from `src/` (not from `dist/`), so
 it doesn't need `pnpm run build` first. It also bundles
-`src/engine/occt.worker.ts` separately into `demo/occt.worker.bundle.js` —
-a real consumer's bundler (Vite, webpack) would split that chunk out
-automatically by recognizing `new Worker(new URL(...))`
-(ARCHITECTURE.md section 4); this demo's plain esbuild script does it by
-hand instead — and copies `occt-import-js`'s `.wasm` binary plus its LGPL
-license texts (`license.occt-import-js.txt`, `license.occt.txt`) into
-`demo/`. All three are committed rather than gitignored, the same reason
-`library-demo.bundle.js` is: the demo works immediately after a fresh
-clone (plus a server, for the STEP half), with nothing to build first.
+`src/engine/occt.worker.ts` and `src/engine/solidworks.worker.ts`
+separately into `demo/occt.worker.bundle.js` and
+`demo/solidworks.worker.bundle.js` — a real consumer's bundler (Vite,
+webpack) would split these chunks out automatically by recognizing
+`new Worker(new URL(...))` (ARCHITECTURE.md section 4); this demo's plain
+esbuild script does it by hand instead — and copies `occt-import-js`'s
+`.wasm` binary plus its LGPL license texts (`license.occt-import-js.txt`,
+`license.occt.txt`) into `demo/`. `SolidWorksDecodeEngine` needs no such
+binary: it depends on nothing but pure JS (`pako`). All of these are
+committed rather than gitignored, the same reason `library-demo.bundle.js`
+is: the demo works immediately after a fresh clone (plus a server, for the
+STEP and SolidWorks halves), with nothing to build first.
 
 `occt-import-js.wasm` is LGPL-2.1, same as the two license texts committed
 alongside it. LGPL-2.1 §6 requires the corresponding source be reachable,
@@ -101,9 +115,9 @@ Separating annotation geometry from part geometry is open work, tracked in
 
 ## Why the demo uses a NIST part
 
-The corpus NIST publishes may be used without restriction, so both the
-decoded geometry and the raw STEP source file (`nist-ftc-11.stp`) are safe
-to commit. Output decoded from any third-party file belongs in
+The corpus NIST publishes may be used without restriction, so the decoded
+geometry and the raw source files (`nist-ftc-11.stp`, `nist-ctc-01.SLDPRT`)
+are all safe to commit. Output decoded from any third-party file belongs in
 `demo/private/`, which is gitignored: a decoded model contains the full
 geometry of the part, and SolidWorks files also carry customer paths, user
 names and part numbers in plaintext.
