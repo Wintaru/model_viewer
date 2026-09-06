@@ -17,10 +17,32 @@ export default {
     {
       name: "no-engine-to-engine",
       comment:
-        "Engine must never call Engine. Sequence multi-step formats from a Manager. A worker entry point (*.worker.ts) constructing and calling its own paired Engine worker-side is not that kind of edge — it has nothing above it but WorkerTransport (ARCHITECTURE.md section 3's main-thread/worker diagram) — so those files are exempt as the 'from' side, unlike the Accessor rule's ModelSource/ModelCacheAccessor exemption below which narrows the TO side to an explicit allowlist. This is a broader, weaker exemption: it does NOT stop a worker from importing a different format's Engine, or (once a second worker exists) one worker importing another's Engine — dependency-cruiser has no way to express 'this worker may only import its own paired Engine' without a rule per format. There is only one worker file today, so nothing is exploitable yet; add real per-pair enforcement (a rule per format, or a sync-guard test) before or when a second one lands. See DECISIONS.md and REVIEW-BACKLOG.md.",
+        "Engine must never call Engine. Sequence multi-step formats from a Manager. A worker entry point (*.worker.ts) constructing and calling its own paired Engine worker-side is not that kind of edge — it has nothing above it but WorkerTransport (ARCHITECTURE.md section 3's main-thread/worker diagram) — so those files are exempt as the 'from' side here, unlike the Accessor rule's ModelSource/ModelCacheAccessor exemption below which narrows the TO side to an explicit allowlist. This blanket exemption is deliberately loosened only this far: the two rules immediately below narrow it back down per format, now that a second worker exists to make that worth enforcing. See DECISIONS.md and REVIEW-BACKLOG.md.",
       severity: "error",
       from: { path: "^src/engine/", pathNot: "\\.worker\\.ts$" },
       to: { path: "^src/engine/" },
+    },
+    {
+      name: "occt-worker-only-imports-occt-engine",
+      comment:
+        "occt.worker.ts is exempted from no-engine-to-engine above so it can construct its own paired OcctDecodeEngine, not so it can reach any Engine at all. Narrows that exemption back to the one file it's actually for.",
+      severity: "error",
+      from: { path: "^src/engine/occt\\.worker\\.ts$" },
+      to: {
+        path: "^src/engine/",
+        pathNot: "^src/engine/OcctDecodeEngine\\.ts$",
+      },
+    },
+    {
+      name: "solidworks-worker-only-imports-solidworks-engine",
+      comment:
+        "Same narrowing as occt-worker-only-imports-occt-engine, for solidworks.worker.ts and SolidWorksDecodeEngine.",
+      severity: "error",
+      from: { path: "^src/engine/solidworks\\.worker\\.ts$" },
+      to: {
+        path: "^src/engine/",
+        pathNot: "^src/engine/SolidWorksDecodeEngine\\.ts$",
+      },
     },
     {
       name: "no-engine-to-manager",

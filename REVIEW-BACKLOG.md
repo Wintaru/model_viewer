@@ -237,21 +237,24 @@ Blocking findings were fixed. These were not.
   last end `=== indices.length`) would close the gap cheaply — worth adding
   next time this file is touched, flagged by code review of commit 4 as
   reasonable to defer rather than block on.
-- **The `no-engine-to-engine` exemption for `*.worker.ts` files is broader
-  than it needs to be.** Commit 5 (`OcctDecodeEngineProxy` + `occt.worker.ts`)
-  needed `occt.worker.ts` to import `OcctDecodeEngine.ts`, both under
-  `src/engine/`, so `.dependency-cruiser.js`'s `no-engine-to-engine` rule
-  now exempts any `*.worker.ts` file on the FROM side entirely — unlike the
-  Accessor rule's `ModelSource`/`ModelCacheAccessor` exemption, which
-  narrows the TO side to an explicit two-file allowlist. This means
-  dependency-cruiser would not catch a worker importing a *different*
-  format's Engine, or (once a second worker exists) one worker importing
-  another's Engine — there is only one worker and one Engine today, so
-  nothing is exploitable yet, but the guard is weaker than the one it was
-  modeled on. Add real per-pair enforcement (a rule per format, or a
-  sync-guard test asserting each `*.worker.ts` only imports the one
-  `*Engine.ts` matching its own prefix) before or when a second worker
-  lands — flagged by code review of commit 5.
+- **The `no-engine-to-engine` exemption for `*.worker.ts` files was broader
+  than it needed to be — resolved in slice 3 commit 5.** Commit 5
+  (`OcctDecodeEngineProxy` + `occt.worker.ts`) needed `occt.worker.ts` to
+  import `OcctDecodeEngine.ts`, both under `src/engine/`, so
+  `.dependency-cruiser.js`'s `no-engine-to-engine` rule exempted any
+  `*.worker.ts` file on the FROM side entirely — unlike the Accessor
+  rule's `ModelSource`/`ModelCacheAccessor` exemption, which narrows the TO
+  side to an explicit allowlist. Flagged then as not yet worth narrowing,
+  since only one worker and one Engine existed. Slice 3 commit 5 added a
+  second worker (`solidworks.worker.ts` + `SolidWorksDecodeEngine`), the
+  condition this note said to wait for, so two narrow rules
+  (`occt-worker-only-imports-occt-engine`,
+  `solidworks-worker-only-imports-solidworks-engine`) now restrict each
+  `*.worker.ts` file to its own paired Engine, layered on top of the
+  original blanket exemption rather than replacing it. Verified by hand
+  (a temporary real cross-import, confirmed `depcruise src` catches it,
+  then reverted) rather than trusted on the strength of the config alone —
+  see DECISIONS.md.
 
 ## From building slice 3 commit 2 — SolidWorksDecodeEngine extraction (2026-09-05)
 
