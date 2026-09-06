@@ -85,11 +85,34 @@ scope by absence of a decision, not by absence of a path. See D12.
   of the smallest real SLDDRW samples available (215 KB) — not just slow on
   the known 13.5 MB outlier, stuck on ordinary-sized files too, and
   unpreemptable from outside since it's one long synchronous loop. Chose
-  real OLE2/compound-file structural parsing over bounding the existing scan
-  with a timeout or dropping SLDDRW from v1 — a timeout ships "fails cleanly
-  on most files," not "SLDDRW actually works." Opened D13 for the concrete
+  real structural container parsing over bounding the existing scan with a
+  timeout or dropping SLDDRW from v1 — a timeout ships "fails cleanly on
+  most files," not "SLDDRW actually works." Opened D13 for the concrete
   research this requires; D12's own Engine-shape sub-question now waits on
-  D13's answer.
+  it. (D13, next below, found the container isn't OLE2 after all —
+  "structural parsing" turned out to mean reverse-engineering a proprietary
+  marker/boundary pattern, not walking a known directory format.)
+- **D13 — The modern SolidWorks container has no published spec; the fix is
+  reverse-engineering a marker pattern, not walking OLE2, 2026-09-06 18:00.**
+  Corrected this same map's own error from the D12 entry above (it wrongly
+  claimed the 2014+ container is OLE2/CFBF-shaped — `ARCHITECTURE.md` section
+  6 and `research/FINDINGS.md` section 5 both already say it isn't; the error
+  was new to this session's D12 write-up, not an old one repeated). An Agent
+  research pass (WebSearch/WebFetch plus this repo's own docs) found:
+  no public spec exists for the modern ("2015+") container; `openswx` (MIT,
+  actively maintained) is the closest prior art, but only does real OLE2
+  directory parsing for its own *pre-2014* branch — for 2015+ it falls back
+  to a **byte-marker scan** (`14 00 06 00 08 00`) plus ROL-decoded stream
+  names, not a directory walk, and covers metadata/BOM only, not
+  tessellation. Recursive inflate (`collect`/`inflateAll`) can't be
+  eliminated either way — D11 already found nesting one layer deeper than
+  any marker/directory would index — so the real fix **bounds** that
+  recursion to one located stream's byte range instead of running it over
+  the whole file, rather than replacing it outright. The code for this
+  belongs in `utility/` (e.g. `SolidWorksContainerUtil.ts`, beside
+  `InflateUtil`), not `Common` or an Accessor: a stateless byte transform,
+  SolidWorks-specific since there's no generic structure to abstract over.
+  Opened D14 for the concrete reverse-engineering work.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP bounding
   box. See `DECISIONS.md`.
@@ -163,7 +186,9 @@ scope) and D6 (DXF adapter split) before it. Open sub-questions:
 - ~~Does `SolidWorksDecodeEngine` grow a SLDDRW mode, or does SLDDRW earn its
   own Engine?~~ Blocked on the extraction-approach question below — deciding
   the Engine shape before knowing whether extraction is even fast enough to
-  ship would be premature. Revisit once D13 (below) has an answer.
+  ship would be premature. Revisit once D14 (below) has an answer — D13
+  (Decisions so far, above) only found *that* the extraction approach
+  needs reverse-engineering, not the pattern itself yet.
 - ~~The container scan that found the cache needed one more explicit
   raw-deflate recursion past `scan-deflate.py`'s own output-cap ceiling…~~
   **Resolved and superseded, 2026-09-06 — see below: the real problem is
@@ -202,49 +227,48 @@ than mostly hangs — not the same as SLDDRW actually working. Dropping it
 loses real value (D11 already proved the cache is there and decodable in
 principle). Real parsing is the only path to SLDDRW being fast enough to
 ship, at the cost of being the bigger lift of the three. Opened as **D13**
-below — the concrete research question this decision creates.
+(Decisions so far, above) — the concrete research question this decision
+creates, resolved the same session (see there for what it found).
 
 Not a blocker on anything already shipped. `FormatSniffEngine` misidentifying
 SLDDRW as `"solidworks"` and hanging instead of failing fast is a real,
 separate, smaller bug in current behavior — tracked for `REVIEW-BACKLOG.md`,
 not fixed inside this wayfinder session (planning, not implementing).
 
-### D13 — What does real OLE2/compound-file container parsing look like for a 2014+ SolidWorks file? `[research]`
+### D14 — Reverse-engineer the modern SolidWorks record/marker boundary pattern `[research]`
 
-D12's scan-cost finding rules out the blind byte-by-byte offset scan as a
-real path to SLDDRW support. The alternative is parsing the container's
-actual structure well enough to jump straight to the tessellation-bearing
-stream, the way any OLE2 Compound File Binary Format reader would (SolidWorks
-2014+'s container is exactly this shape per `ARCHITECTURE.md` section 6's
-"Stage 1" — this project never had to parse it structurally before because
-the blind scan was cheap enough for a single small part file).
+D13 found that no published spec exists for the container format this
+project's SolidWorks decoder targets, and that the closest working prior
+art (`openswx`'s 2015+ path) locates streams by scanning for a
+`14 00 06 00 08 00` byte marker rather than walking an indexed directory.
+This ticket is the empirical work D13 could only recommend, not do itself:
 
-Open questions this needs answered before any implementation:
+- Hex-diff the byte regions immediately preceding each of D11's already-known
+  real stream offsets — SLDPRT's known streams (`research/FINDINGS.md`
+  section 5 catalogs 22 for one NIST file), and SLDDRW's outer tessellation
+  stream (`DECISIONS.md`'s D11 entry) — across several real sample files, to
+  find a consistent short marker and/or length-prefix pattern preceding each
+  one. Same comparative method D8/D9/D11 each already used.
+- Confirm whether `openswx`'s own `14 00 06 00 08 00` marker appears at (or
+  near) these same offsets in this project's sample files — if it does,
+  that's a working starting point rather than a cold reverse-engineering
+  start.
+- Once a marker/boundary pattern is confirmed, prototype a scan that finds
+  it directly (a targeted byte-sequence search, cheap compared to the
+  current per-offset decompression attempt) and measure it against the same
+  215 KB SLDDRW sample that hung for 400+ seconds under the current
+  `collect`/`inflateAll` — the concrete bar this ticket needs to clear.
+- Only once boundary-finding is fast does D12's Engine-shape question
+  (mode vs. new Engine) become answerable with real information instead of
+  a guess.
 
-- Is a 2014+ SolidWorks container a standard OLE2/CFBF structure (the same
-  family `.doc`/`.xls` used), or SolidWorks-proprietary on top of it? If
-  standard OLE2, a well-understood directory-and-FAT structure means a
-  reader can walk it directly to the named stream instead of scanning.
-- Does prior art exist for reading this without a vendor SDK? `openswx` was
-  already surfaced once (D2) for property/metadata parsing — check whether
-  it (or another MIT/BSD reader) parses the container structure itself, not
-  just the tessellation record layout `research/d9-decode.py` already
-  covers.
-- Assuming OLE2: is the current recursive deflate-stream detection
-  (`collect`/`inflateAll` in `SolidWorksDecodeEngine.ts`) still needed at all
-  once the real stream is found directly, or does structural parsing replace
-  it entirely? (`research/FINDINGS.md` section 5 and `DECISIONS.md`'s D11
-  entry both describe the *existing* blind-scan approach — this question is
-  about whether it survives once a real reader exists.)
-- Scope check once the shape is known: does this become a new
-  `Common`-layer utility (an OLE2 reader, reusable if IGES/STEP-adjacent
-  formats ever need one) or a SLDDRW/SolidWorks-specific Accessor? Affects
-  `ARCHITECTURE.md` section 2's layer table, not just this one decision.
+Uses real, confidentiality-sensitive sample files
+(`the customer corpus` and the NIST corpus) — CLAUDE.md's usual
+rules apply: no raw stream bytes or decoded content in anything committed,
+findings only.
 
-Blocks D12's Engine-shape sub-question (does `SolidWorksDecodeEngine` grow a
-mode, or does SLDDRW get its own Engine) — that can't be answered until the
-extraction approach's actual shape is known. Not a blocker on anything
-already shipped.
+Blocks D12's Engine-shape sub-question. Not a blocker on anything already
+shipped.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 
