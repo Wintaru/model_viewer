@@ -2,6 +2,7 @@ export type { ModelSource } from "./accessor/ModelSource";
 export { fromBuffer } from "./accessor/BufferSourceAccessor";
 export { fromFile } from "./accessor/FileSourceAccessor";
 export { fromResponse } from "./accessor/ResponseSourceAccessor";
+export { fromUrl, type UrlSourceInit } from "./accessor/UrlSourceAccessor";
 
 /**
  * Re-exported under the friendlier public name SPEC.md section 7a's API

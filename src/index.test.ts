@@ -10,6 +10,7 @@ describe("entry point", () => {
         "fromBuffer",
         "fromFile",
         "fromResponse",
+        "fromUrl",
       ].sort(),
     );
   });
