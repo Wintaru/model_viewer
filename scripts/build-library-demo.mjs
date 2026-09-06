@@ -74,6 +74,20 @@ await esbuild.build({
   platform: "browser",
 });
 
+// dxf.worker.ts's own dependency (DxfDecodeEngine) is pure JS with no
+// external package and no Node-only branch, same as solidworks.worker.ts
+// above — no `external` list, no binary to copy afterward.
+await esbuild.build({
+  entryPoints: ["src/engine/dxf.worker.ts"],
+  outfile: "demo/dxf.worker.bundle.js",
+  bundle: true,
+  format: "esm",
+  target: "es2022",
+  minify: true,
+  logLevel: "info",
+  platform: "browser",
+});
+
 // The OCCT wasm binary itself is never statically imported — the demo
 // passes WasmAssetAccessor a URL and it's fetched at runtime — so it only
 // needs to exist next to the demo, not be bundled. Copied rather than

@@ -9,11 +9,12 @@ export default tseslint.config(
     // third-party CAD output — see the comment in .gitignore) and dist/
     // (build output, commit 12) are repeated here by hand. Keep the two in
     // sync.
-    // demo/library-demo.bundle.js, demo/occt.worker.bundle.js and
-    // demo/solidworks.worker.bundle.js are generated
-    // (scripts/build-library-demo.mjs, commits 14, slice 2 commit 7 and
-    // slice 3 commit 7) — bundled, unformatted single files, same category
-    // as demo/viewer.html and dist/.
+    // demo/library-demo.bundle.js, demo/occt.worker.bundle.js,
+    // demo/solidworks.worker.bundle.js and demo/dxf.worker.bundle.js are
+    // generated (scripts/build-library-demo.mjs, commits 14, slice 2
+    // commit 7, slice 3 commit 7 and slice 6 commit 7) — bundled,
+    // unformatted single files, same category as demo/viewer.html and
+    // dist/.
     ignores: [
       "node_modules/",
       "demo/private/",
@@ -22,6 +23,7 @@ export default tseslint.config(
       "demo/library-demo.bundle.js",
       "demo/occt.worker.bundle.js",
       "demo/solidworks.worker.bundle.js",
+      "demo/dxf.worker.bundle.js",
     ],
   },
   js.configs.recommended,

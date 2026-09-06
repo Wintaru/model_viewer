@@ -82,6 +82,23 @@ It proves four things, with two different delivery requirements:
   be valid glTF 2.0 JSON with the expected mesh and accessor counts. Both
   need only the cube, so unlike the STEP and SolidWorks halves above, this
   works over `file://` too.
+- **A DXF drawing** (`sample.dxf`, slice 6 commit 7) — a small
+  hand-authored square-plus-circle fixture, two layers ("Outline" and
+  "Detail"). Unlike the STEP and SolidWorks halves, this isn't a
+  third-party file: it's our own content, written by hand, so it's safe to
+  commit directly rather than needing NIST's usable-without-restriction
+  provenance. Decoded through `DxfDecodeEngine` and rendered through
+  `toThreeDrawing` (`@wintaru/part-viewer/2d`, the second adapter WAYFINDER
+  D6 calls for) rather than `toThree` — proves the new decoder and adapter
+  work together in a real browser, off the main thread in a real `Worker`,
+  the same as the STEP and SolidWorks halves. Confirmed by hand: the status
+  line reports "DXF: loaded 2 mesh(es) (layers: Outline, Detail)", one
+  mesh per layer, matching the fixture exactly. Same `file://` restriction
+  as STEP and SolidWorks, for the same reason (constructing a `Worker`).
+  This demo stays a smoke test — one shared `PerspectiveCamera` orbiting
+  every shape — so it does not also build a dedicated orthographic 2D
+  viewport with layer toggles; that belongs to D7's still-open
+  designed-viewer work, not this proof.
 
 Rebuild everything with:
 
@@ -91,18 +108,20 @@ pnpm run build:demo
 
 This bundles `library-demo.ts` straight from `src/` (not from `dist/`), so
 it doesn't need `pnpm run build` first. It also bundles
-`src/engine/occt.worker.ts` and `src/engine/solidworks.worker.ts`
-separately into `demo/occt.worker.bundle.js` and
-`demo/solidworks.worker.bundle.js` — a real consumer's bundler (Vite,
-webpack) would split these chunks out automatically by recognizing
-`new Worker(new URL(...))` (ARCHITECTURE.md section 4); this demo's plain
-esbuild script does it by hand instead — and copies `occt-import-js`'s
-`.wasm` binary plus its LGPL license texts (`license.occt-import-js.txt`,
-`license.occt.txt`) into `demo/`. `SolidWorksDecodeEngine` needs no such
-binary: it depends on nothing but pure JS (`pako`). All of these are
-committed rather than gitignored, the same reason `library-demo.bundle.js`
-is: the demo works immediately after a fresh clone (plus a server, for the
-STEP and SolidWorks halves), with nothing to build first.
+`src/engine/occt.worker.ts`, `src/engine/solidworks.worker.ts` and
+`src/engine/dxf.worker.ts` separately into `demo/occt.worker.bundle.js`,
+`demo/solidworks.worker.bundle.js` and `demo/dxf.worker.bundle.js` — a real
+consumer's bundler (Vite, webpack) would split these chunks out
+automatically by recognizing `new Worker(new URL(...))` (ARCHITECTURE.md
+section 4); this demo's plain esbuild script does it by hand instead — and
+copies `occt-import-js`'s `.wasm` binary plus its LGPL license texts
+(`license.occt-import-js.txt`, `license.occt.txt`) into `demo/`.
+`SolidWorksDecodeEngine` and `DxfDecodeEngine` need no such binary: both
+depend on nothing but pure JS (`pako` for the former; nothing at all for
+the latter). All of these are committed rather than gitignored, the same
+reason `library-demo.bundle.js` is: the demo works immediately after a
+fresh clone (plus a server, for the STEP, SolidWorks and DXF halves), with
+nothing to build first.
 
 `occt-import-js.wasm` is LGPL-2.1, same as the two license texts committed
 alongside it. LGPL-2.1 §6 requires the corresponding source be reachable,
@@ -135,3 +154,7 @@ are all safe to commit. Output decoded from any third-party file belongs in
 `demo/private/`, which is gitignored: a decoded model contains the full
 geometry of the part, and SolidWorks files also carry customer paths, user
 names and part numbers in plaintext.
+
+`sample.dxf` isn't a NIST file — the NIST corpus has no DXF at all — it's
+hand-authored, ordinary text we wrote ourselves, so the third-party
+provenance question doesn't apply to it the same way.

@@ -32,15 +32,26 @@
  *   through `ModelExporter` and offered as a `smoke-cube.gltf` download —
  *   both need only the cube, so unlike the STEP and SolidWorks halves,
  *   this works over `file://` too.
+ * - A DXF drawing (`sample.dxf`, slice 6 commit 7) — a small hand-authored
+ *   square-plus-circle fixture, two layers, committed rather than
+ *   gitignored since it's our own content, not decoded from a third-party
+ *   file (unlike the STEP and SolidWorks halves' NIST sources). Same
+ *   `file://` restriction and caught-and-reported failure mode as those
+ *   two, since it also needs a real `Worker`. Rendered through
+ *   `toThreeDrawing` (the `/2d` adapter, D6), not `toThree` — proves the
+ *   decoder and the new adapter work together in a real browser. This demo
+ *   stays a smoke test, one shared `PerspectiveCamera` orbiting every
+ *   shape, so it doesn't build a dedicated 2D viewport — that's D7's
+ *   designed-viewer work, still open.
  *
  * Bundled to library-demo.bundle.js by scripts/build-library-demo.mjs into a
  * classic, non-module script — a `<script type="module">` fails to load
  * over `file://` in every major browser (each cross-file import is blocked
  * as cross-origin), which is why demo/viewer.html takes the same
- * everything-inlined approach. occt.worker.ts and solidworks.worker.ts are
- * each bundled separately, by the same script, into
- * demo/occt.worker.bundle.js and demo/solidworks.worker.bundle.js: see that
- * script's comments.
+ * everything-inlined approach. occt.worker.ts, solidworks.worker.ts and
+ * dxf.worker.ts are each bundled separately, by the same script, into
+ * demo/occt.worker.bundle.js, demo/solidworks.worker.bundle.js and
+ * demo/dxf.worker.bundle.js: see that script's comments.
  */
 import {
   AmbientLight,
@@ -58,12 +69,15 @@ import {
   ModelLoader,
   ModuleRegistry,
   type DecodedModel,
+  type DxfDecoder,
   type ModelCacheAccessor,
   type SolidWorksDecoder,
   type StepDecoder,
 } from "../src/index";
+import { DxfDecodeEngineProxy } from "../src/engine/DxfDecodeEngineProxy";
 import { OcctDecodeEngineProxy } from "../src/engine/OcctDecodeEngineProxy";
 import { SolidWorksDecodeEngineProxy } from "../src/engine/SolidWorksDecodeEngineProxy";
+import { toThreeDrawing } from "../src/2d/index";
 import { toThree } from "../src/three/index";
 
 const STEP_WASM_URL = "occt-import-js.wasm";
@@ -71,6 +85,8 @@ const STEP_WORKER_URL = "occt.worker.bundle.js";
 const STEP_FILE_URL = "nist-ftc-11.stp";
 const SOLIDWORKS_WORKER_URL = "solidworks.worker.bundle.js";
 const SOLIDWORKS_FILE_URL = "nist-ctc-01.SLDPRT";
+const DXF_WORKER_URL = "dxf.worker.bundle.js";
+const DXF_FILE_URL = "sample.dxf";
 
 interface Triangle {
   readonly normal: readonly [number, number, number];
@@ -249,6 +265,21 @@ function createSolidWorksDecoders(): ModuleRegistry<
 }
 
 /**
+ * The DXF half of the demo's dispatch config — same reasoning as
+ * `createSolidWorksDecoders`: no configuration but `createWorker`.
+ */
+function createDxfDecoders(): ModuleRegistry<"dxf", DxfDecoder> {
+  return new ModuleRegistry<"dxf", DxfDecoder>({
+    dxf: () =>
+      Promise.resolve(
+        new DxfDecodeEngineProxy(
+          () => new Worker(DXF_WORKER_URL, { type: "module" }),
+        ),
+      ),
+  });
+}
+
+/**
  * Loads `nist-ftc-11.stp` and adds it to `spinning`, offset so it doesn't
  * overlap the cube. Reports the outcome by appending to `status` rather
  * than replacing it, so the cube's own line stays visible either way.
@@ -339,6 +370,52 @@ async function loadSolidWorksPart(
 }
 
 /**
+ * Loads `sample.dxf` (a small hand-authored square-plus-circle drawing, two
+ * layers — committed rather than gitignored, since it's our own content,
+ * not decoded from a third-party file) and adds it to `spinning`. Same
+ * `fromUrl`, `file://` restriction and catch-and-report handling as
+ * `loadStepPart`/`loadSolidWorksPart` — constructing a `Worker` is what
+ * throws here too.
+ *
+ * Renders through `toThreeDrawing` (the `/2d` adapter, D6), not `toThree`:
+ * the decoded model's meshes are `topology: 'lines'`, and `toThreeDrawing`
+ * is the adapter built for that shape. This demo stays a smoke test — one
+ * shared `PerspectiveCamera` orbiting every shape — so it doesn't also
+ * exercise `frameOrthographicCamera` or `setLayerVisible`: those are pure,
+ * synchronous functions already fully covered by `src/2d/index.test.ts`,
+ * with no real-browser-specific behaviour left to prove the way decoding
+ * off a `Worker` has. A dedicated 2D viewport is D7's designed-viewer work,
+ * still open (WAYFINDER.md), not this smoke demo's job.
+ */
+async function loadDxfPart(
+  loader: ModelLoader,
+  spinning: Group,
+  status: HTMLElement,
+): Promise<void> {
+  try {
+    const model = await loader.load(
+      fromUrl(DXF_FILE_URL, { name: "sample.dxf" }),
+    );
+
+    if (model.diagnostics.some((d) => d.severity === "error")) {
+      status.textContent += `\nDXF: ${model.diagnostics.map((d) => `${d.severity}: ${d.message}`).join("; ")}`;
+      return;
+    }
+
+    const object = toThreeDrawing(model);
+    object.position.set(0, 0, 150);
+    spinning.add(object);
+    status.textContent += `\nDXF: loaded ${model.meshes.length} mesh(es) (layer${model.meshes.length === 1 ? "" : "s"}: ${model.meshes.map((m) => m.name).join(", ")}).`;
+  } catch (error) {
+    const reason =
+      location.protocol === "file:"
+        ? "this half needs the page served over http(s), not opened as a file:// path"
+        : "unexpected failure";
+    status.textContent += `\nDXF: skipped — ${reason}. (${String(error)})`;
+  }
+}
+
+/**
  * A trivial in-memory `ModelCacheAccessor` (SPEC.md section 10 slice 5). A
  * real host would back this with IndexedDB or disk; this demo only needs
  * to prove the check-cache/decode/store contract actually works, not to
@@ -396,6 +473,7 @@ async function main(): Promise<void> {
     createStepDecoders(),
     createSolidWorksDecoders(),
     cache,
+    createDxfDecoders(),
   );
 
   const firstLoadStart = performance.now();
@@ -458,6 +536,7 @@ async function main(): Promise<void> {
 
   await loadStepPart(loader, spinning, status);
   await loadSolidWorksPart(loader, spinning, status);
+  await loadDxfPart(loader, spinning, status);
 }
 
 main().catch((error: unknown) => {
