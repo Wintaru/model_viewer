@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "description": "Renders engineering CAD files in the browser: STEP/IGES, native SolidWorks parts, mesh formats, and DXF. Conversion runs entirely on the client.",
+  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.20.0",
   "engines": {
