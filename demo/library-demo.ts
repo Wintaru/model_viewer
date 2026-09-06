@@ -47,6 +47,7 @@ import {
 } from "three";
 import {
   fromBuffer,
+  fromUrl,
   ModelLoader,
   ModuleRegistry,
   type SolidWorksDecoder,
@@ -243,8 +244,17 @@ function createSolidWorksDecoders(): ModuleRegistry<
  * overlap the cube. Reports the outcome by appending to `status` rather
  * than replacing it, so the cube's own line stays visible either way.
  *
+ * Loads through `fromUrl` (SPEC.md section 10 slice 4) rather than a manual
+ * `fetch` + `fromBuffer`, proving the packaging decision for real: this
+ * demo has no way to fetch a Range-limited prefix by hand the way
+ * `UrlSourceAccessor.readRange` does, so `ModelLoadManager.load` sniffing
+ * the format from a small prefix and starting `OcctDecodeEngineProxy`'s
+ * lazy import before this file finishes downloading only happens because
+ * `fromUrl` is now the source, not because this function does anything
+ * differently.
+ *
  * Failure here is expected, not a bug, when this file is opened directly
- * (`file://`): both `fetch`-ing the STEP file and constructing the Worker
+ * (`file://`): both fetching the STEP file and constructing the Worker
  * this needs throw immediately from an opaque `file://` origin — measured
  * by hand in a real browser, not assumed (DECISIONS.md). Caught here so
  * that case reports clearly instead of surfacing as an uncaught rejection
@@ -256,12 +266,9 @@ async function loadStepPart(
   status: HTMLElement,
 ): Promise<void> {
   try {
-    const response = await fetch(STEP_FILE_URL);
-    if (!response.ok) {
-      throw new Error(`${response.status} ${response.statusText}`);
-    }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    const model = await loader.load(fromBuffer(bytes, "nist-ftc-11.stp"));
+    const model = await loader.load(
+      fromUrl(STEP_FILE_URL, { name: "nist-ftc-11.stp" }),
+    );
 
     if (model.diagnostics.some((d) => d.severity === "error")) {
       status.textContent += `\nSTEP: ${model.diagnostics.map((d) => `${d.severity}: ${d.message}`).join("; ")}`;
@@ -289,10 +296,10 @@ async function loadStepPart(
 /**
  * Loads `nist-ctc-01.SLDPRT` and adds it to `spinning`, offset to the
  * opposite side from the STEP part so all three shapes stay visually
- * distinct. Same `file://` restriction and the same catch-and-report
- * handling as `loadStepPart` — see that function's doc comment — since
- * constructing a `Worker` is what throws here too, not anything specific to
- * wasm.
+ * distinct. Same `fromUrl` reasoning, `file://` restriction and
+ * catch-and-report handling as `loadStepPart` — see that function's doc
+ * comment — since constructing a `Worker` is what throws here too, not
+ * anything specific to wasm.
  */
 async function loadSolidWorksPart(
   loader: ModelLoader,
@@ -300,12 +307,9 @@ async function loadSolidWorksPart(
   status: HTMLElement,
 ): Promise<void> {
   try {
-    const response = await fetch(SOLIDWORKS_FILE_URL);
-    if (!response.ok) {
-      throw new Error(`${response.status} ${response.statusText}`);
-    }
-    const bytes = new Uint8Array(await response.arrayBuffer());
-    const model = await loader.load(fromBuffer(bytes, "nist-ctc-01.SLDPRT"));
+    const model = await loader.load(
+      fromUrl(SOLIDWORKS_FILE_URL, { name: "nist-ctc-01.SLDPRT" }),
+    );
 
     if (model.diagnostics.some((d) => d.severity === "error")) {
       status.textContent += `\nSolidWorks: ${model.diagnostics.map((d) => `${d.severity}: ${d.message}`).join("; ")}`;

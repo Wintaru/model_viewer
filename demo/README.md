@@ -41,7 +41,11 @@ It proves three things, with two different delivery requirements:
   makes `viewer.html` inline its geometry instead of fetching it.
 - **A real STEP file** (`nist-ftc-11.stp`) — proves the slice 2 packaging
   decision: OCCT's `.wasm` fetched lazily, decoded off the main thread in a
-  real `Worker`. **This half needs the page served over http(s)** —
+  real `Worker`. Loaded through `fromUrl` (slice 4), so this also exercises
+  the sniff-first fast path: `ModelLoadManager.load` reads a small prefix
+  through `UrlSourceAccessor.readRange` to identify the format before the
+  rest of the file has finished downloading. **This half needs the page
+  served over http(s)** —
   confirmed by hand in a real browser, not assumed: a `file://` page gets
   an opaque origin, and constructing a `Worker` from one throws
   immediately, whether it's a classic or a module worker, regardless of
