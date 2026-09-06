@@ -1,19 +1,19 @@
 import { fromBuffer } from "../accessor/BufferSourceAccessor";
 import { fromFile } from "../accessor/FileSourceAccessor";
 import type { ModelSource } from "../accessor/ModelSource";
+import { fromUrl } from "../accessor/UrlSourceAccessor";
 import {
   createEmptyDecodedModel,
   type DecodedModel,
 } from "../common/DecodedModel";
+import type { FormatId } from "../common/FormatId";
 import { FormatSniffEngine } from "../engine/FormatSniffEngine";
 import { MeshDecodeEngine } from "../engine/MeshDecodeEngine";
 import { ModuleRegistry } from "../utility/ModuleRegistry";
 
 /**
- * What {@link ModelLoadManager.load} accepts. Narrower than SPEC.md section
- * 7's full `ModelInput` (`| string | URL`): those two variants need
- * `fromUrl`, which doesn't exist until slice 4. Widen this type when it
- * does, rather than accepting them now and failing at runtime.
+ * Matches SPEC.md section 7's full `ModelInput`. `string | URL` route
+ * through `fromUrl`, added in this same slice — see `toModelSource` below.
  *
  * Declared here, not its own file: it has exactly one consumer
  * (`ModelLoadManager`) and no external implementer, so a separate file
@@ -21,7 +21,17 @@ import { ModuleRegistry } from "../utility/ModuleRegistry";
  * the same reasoning that colocates `fromBuffer` with its class. See
  * DECISIONS.md.
  */
-export type ModelInput = ModelSource | File | Blob | ArrayBuffer | Uint8Array;
+export type ModelInput =
+  ModelSource | File | Blob | ArrayBuffer | Uint8Array | string | URL;
+
+/**
+ * How many bytes of a `readRange`-capable source to sniff before the full
+ * download finishes — ARCHITECTURE.md section 3's sequence diagram
+ * (`readRange(0, 4096)`), which was already checked against every
+ * `FormatSniffEngine` signature (all within the first few dozen bytes) when
+ * it was drawn.
+ */
+const SNIFF_PREFIX_BYTES = 4096;
 
 /**
  * What `ModuleRegistry`'s `"step"` loader must resolve to. Matches
@@ -96,14 +106,54 @@ export class ModelLoadManager {
 
   async load(input: ModelInput): Promise<DecodedModel> {
     const source = toModelSource(input);
-    const bytes = await source.read();
-    const format = this.sniffer.transform(bytes);
 
-    if (format === "stl") {
-      return this.meshDecoder.transform(bytes);
+    if (source.readRange === undefined) {
+      const bytes = await source.read();
+      return this.decode(this.sniffer.transform(bytes), Promise.resolve(bytes));
     }
+
+    // Sniffing a small prefix here means the format — and so which lazy
+    // decoder chunk `decode` below needs — is known before the full
+    // download finishes, so the two can run concurrently instead of back
+    // to back (ARCHITECTURE.md section 3). `decode` starts that decoder's
+    // resolution immediately, ahead of the `source.read()` it awaits here.
+    const prefix = await source.readRange(0, SNIFF_PREFIX_BYTES);
+    const sniffedFromPrefix = this.sniffer.transform(prefix);
+    if (sniffedFromPrefix !== undefined) {
+      return this.decode(sniffedFromPrefix, source.read());
+    }
+    // A short prefix can't identify every format — a binary STL's only
+    // signature is a triangle count at offset 80 that must make the total
+    // file length add up (FormatSniffEngine.ts), so a binary STL bigger
+    // than the prefix sniffs as `undefined` here even though the whole
+    // file would sniff fine. Falling back to a full read-then-sniff, same
+    // as a source with no `readRange` at all, keeps this path from
+    // rejecting a file this library actually supports (REVIEW-BACKLOG.md).
+    const bytes = await source.read();
+    return this.decode(this.sniffer.transform(bytes), Promise.resolve(bytes));
+  }
+
+  private async decode(
+    format: FormatId | undefined,
+    bytesPromise: Promise<Uint8Array>,
+  ): Promise<DecodedModel> {
     if (format === "step") {
-      if (this.stepDecoders === undefined) {
+      // Started immediately, before `bytesPromise` below is awaited, so it
+      // runs alongside the rest of the download rather than only starting
+      // once that download has already finished — the whole point of the
+      // sniff-first path in `load` above. Harmless when `bytesPromise` is
+      // already resolved (the no-`readRange` path): the import just starts
+      // a microtask later than it possibly could have.
+      const decoderPromise = this.stepDecoders?.get("step");
+      // A rejected `decoderPromise` sits unhandled for as long as
+      // `bytesPromise` below is still in flight — a real gap on a slow
+      // download racing a failed chunk fetch, not a hypothetical: Node
+      // treats an unhandled rejection as fatal by default. This extra
+      // `.catch` only marks it handled; the `await decoderPromise` further
+      // down still sees and propagates the real rejection.
+      markSettled(decoderPromise);
+      const bytes = await bytesPromise;
+      if (decoderPromise === undefined) {
         return createEmptyDecodedModel({
           severity: "error",
           code: "occt-decoder-not-configured",
@@ -111,13 +161,13 @@ export class ModelLoadManager {
             "Recognized this as a step file, but no STEP/IGES decoder is configured on this ModelLoadManager — pass the OCCT wasm asset's URL as the third constructor argument. See ARCHITECTURE.md section 4.",
         });
       }
-      // Deliberately not caught here, unlike every other exit from load():
+      // Deliberately not caught here, unlike every other exit from decode():
       // a rejected `get("step")` means the decoder chunk failed to import
       // (or the registry's own loader threw), which is this manager's
       // setup failing, not something about the file being decoded — the
       // same distinction OcctDecodeEngine.ts draws between a per-file
       // decode diagnostic and a rejected engine-setup failure.
-      const decoder = await this.stepDecoders.get("step");
+      const decoder = await decoderPromise;
       return decoder.transform(bytes);
     }
     if (format === "solidworks") {
@@ -125,16 +175,26 @@ export class ModelLoadManager {
       // always has a real default, so this is never unusable for a real
       // caller. Same reasoning as `step`'s comment for why a rejected
       // `get` is left uncaught here.
-      const decoder = await this.solidWorksDecoders.get("solidworks");
+      const decoderPromise = this.solidWorksDecoders.get("solidworks");
+      // Same unhandled-rejection gap as the `step` branch above, and the
+      // same fix.
+      markSettled(decoderPromise);
+      const bytes = await bytesPromise;
+      const decoder = await decoderPromise;
       return decoder.transform(bytes);
     }
+    if (format === "stl") {
+      return this.meshDecoder.transform(await bytesPromise);
+    }
     if (format === undefined) {
+      await bytesPromise;
       return createEmptyDecodedModel({
         severity: "error",
         code: "unrecognized-format",
         message: "Could not identify the file format from its bytes.",
       });
     }
+    await bytesPromise;
     return createEmptyDecodedModel({
       severity: "error",
       code: "unsupported-format",
@@ -178,12 +238,28 @@ function createSolidWorksDecoders(): ModuleRegistry<
   });
 }
 
+/**
+ * Attaches a no-op rejection handler to `promise`, without consuming its
+ * settled value — so a later, real `await` of the same promise still sees
+ * and propagates a rejection normally. Exists only to prevent an unhandled
+ * rejection from being reported (fatally, in Node) while some *other*
+ * promise is awaited first — see `decode`'s two call sites.
+ */
+function markSettled(promise: Promise<unknown> | undefined): void {
+  promise?.catch(() => {
+    // Intentionally empty: see doc comment above.
+  });
+}
+
 function toModelSource(input: ModelInput): ModelSource {
   if (input instanceof ArrayBuffer || input instanceof Uint8Array) {
     return fromBuffer(input);
   }
   if (input instanceof Blob) {
     return fromFile(input);
+  }
+  if (typeof input === "string" || input instanceof URL) {
+    return fromUrl(input);
   }
   return input;
 }

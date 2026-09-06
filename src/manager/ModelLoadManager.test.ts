@@ -1,11 +1,37 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { fromBuffer } from "../accessor/BufferSourceAccessor";
+import type { ModelSource } from "../accessor/ModelSource";
 import { ModuleRegistry } from "../utility/ModuleRegistry";
 import {
   ModelLoadManager,
   type SolidWorksDecoder,
   type StepDecoder,
 } from "./ModelLoadManager";
+
+/**
+ * A minimal, this-file-only ambient type for the one Node global one
+ * regression test below needs, to detect an unhandled promise rejection.
+ * Not a project-wide `.d.ts` — `src/engine/node-fs.d.ts`'s own doc comment
+ * explains why `@types/node` isn't added broadly (it would let Node's
+ * ambient globals type-check inside `src/`, defeating this browser-only
+ * library's one guard against accidentally reaching for a Node-only API).
+ * A plain `declare const` here types only within this module instead. The
+ * real `process` global Vitest's Node environment already provides at
+ * runtime is untouched; this only satisfies the type checker.
+ */
+declare const process: {
+  on(event: "unhandledRejection", listener: (reason: unknown) => void): void;
+  off(event: "unhandledRejection", listener: (reason: unknown) => void): void;
+};
+
+/** Yields enough microtask turns for a chain of already-settled promises
+ * (an `await`, then a synchronous `ModuleRegistry.get()` call, then another
+ * `await`) to fully unwind before an assertion inspects their side effects. */
+async function flushMicrotasks(): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    await Promise.resolve();
+  }
+}
 
 interface Triangle {
   readonly normal: readonly [number, number, number];
@@ -64,6 +90,10 @@ function solidWorksBytes(): Uint8Array {
 }
 
 describe("ModelLoadManager", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("loads a binary STL given raw bytes (Uint8Array)", async () => {
     const manager = new ModelLoadManager();
 
@@ -245,6 +275,166 @@ describe("ModelLoadManager", () => {
         code: "unrecognized-format",
       }),
     );
+  });
+
+  it("sniffs from a readRange prefix, not a full read, when the source supports it", async () => {
+    const manager = new ModelLoadManager();
+    let readRangeArgs: readonly [number, number] | undefined;
+    const fullBytes = binaryStl([oneTriangle]);
+    const source: ModelSource = {
+      readRange: (start, end) => {
+        readRangeArgs = [start, end];
+        return Promise.resolve(fullBytes.subarray(start, end));
+      },
+      read: () => Promise.resolve(fullBytes),
+    };
+
+    const model = await manager.load(source);
+
+    expect(readRangeArgs).toEqual([0, 4096]);
+    expect(model.meshes).toHaveLength(1);
+  });
+
+  it("falls back to sniffing the full read when the source has no readRange", async () => {
+    const manager = new ModelLoadManager();
+    let readCalled = false;
+    const source: ModelSource = {
+      read: () => {
+        readCalled = true;
+        return Promise.resolve(binaryStl([oneTriangle]));
+      },
+    };
+
+    const model = await manager.load(source);
+
+    expect(readCalled).toBe(true);
+    expect(model.meshes).toHaveLength(1);
+  });
+
+  it("starts resolving the step decoder before the full download finishes, when readRange is available", async () => {
+    let stepLoaderCalled = false;
+    let resolveRead!: (bytes: Uint8Array) => void;
+    const readPromise = new Promise<Uint8Array>((resolve) => {
+      resolveRead = resolve;
+    });
+    const bytes = ascii("ISO-10303-21;\nHEADER;\n");
+    const source: ModelSource = {
+      readRange: () => Promise.resolve(bytes),
+      read: () => readPromise,
+    };
+    const fakeDecoder: StepDecoder = {
+      transform: () =>
+        Promise.resolve({
+          units: "mm",
+          meshes: [],
+          tree: [],
+          metadata: {},
+          diagnostics: [],
+        }),
+    };
+    const stepDecoders = new ModuleRegistry<"step", StepDecoder>({
+      step: () => {
+        stepLoaderCalled = true;
+        return Promise.resolve(fakeDecoder);
+      },
+    });
+    const manager = new ModelLoadManager(undefined, undefined, stepDecoders);
+
+    const loadPromise = manager.load(source);
+    await flushMicrotasks();
+    expect(stepLoaderCalled).toBe(true);
+
+    resolveRead(bytes);
+    await loadPromise;
+  });
+
+  it("falls back to a full read-then-sniff when a binary STL doesn't fit the readRange prefix", async () => {
+    const manager = new ModelLoadManager();
+    // 100 triangles is 5,084 bytes (84-byte header + 100 * 50), comfortably
+    // past SNIFF_PREFIX_BYTES (4,096) — FormatSniffEngine can't recognize
+    // binary STL from a prefix that short (see its own doc comment), so
+    // this only passes if load() re-sniffs the full bytes instead of
+    // giving up on the prefix's `undefined` result.
+    const manyTriangles = Array.from({ length: 100 }, () => oneTriangle);
+    const fullBytes = binaryStl(manyTriangles);
+    expect(fullBytes.byteLength).toBeGreaterThan(4096);
+    let readCalled = false;
+    const source: ModelSource = {
+      readRange: (start, end) =>
+        Promise.resolve(fullBytes.subarray(start, end)),
+      read: () => {
+        readCalled = true;
+        return Promise.resolve(fullBytes);
+      },
+    };
+
+    const model = await manager.load(source);
+
+    expect(readCalled).toBe(true);
+    expect(model.meshes).toHaveLength(1);
+    expect(model.meshes[0]?.positions).toHaveLength(100 * 9);
+  });
+
+  it("does not leave a rejected decoder promise unhandled while the full download is still pending", async () => {
+    let resolveRead!: (bytes: Uint8Array) => void;
+    const readPromise = new Promise<Uint8Array>((resolve) => {
+      resolveRead = resolve;
+    });
+    const bytes = ascii("ISO-10303-21;\nHEADER;\n");
+    const source: ModelSource = {
+      readRange: () => Promise.resolve(bytes),
+      read: () => readPromise,
+    };
+    const stepDecoders = new ModuleRegistry<"step", StepDecoder>({
+      step: () => Promise.reject(new Error("chunk fetch failed")),
+    });
+    const manager = new ModelLoadManager(undefined, undefined, stepDecoders);
+
+    const unhandledRejections: unknown[] = [];
+    const onUnhandledRejection = (reason: unknown): void => {
+      unhandledRejections.push(reason);
+    };
+    process.on("unhandledRejection", onUnhandledRejection);
+
+    try {
+      const loadPromise = manager.load(source);
+      // Give the decoder's rejection a chance to be reported as unhandled
+      // before the slow "download" below ever resolves — reproducing the
+      // exact race this fix closes.
+      await flushMicrotasks();
+      resolveRead(bytes);
+      await expect(loadPromise).rejects.toThrow("chunk fetch failed");
+      await flushMicrotasks();
+    } finally {
+      process.off("unhandledRejection", onUnhandledRejection);
+    }
+
+    expect(unhandledRejections).toEqual([]);
+  });
+
+  it("routes a string URL through fromUrl", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (
+          _input: RequestInfo | URL,
+          init?: RequestInit,
+        ): ReturnType<typeof fetch> => {
+          const fullBytes = binaryStl([oneTriangle]);
+          if (init?.headers !== undefined) {
+            return Promise.resolve(
+              new Response(fullBytes.subarray(0, 4096), { status: 206 }),
+            );
+          }
+          return Promise.resolve(new Response(fullBytes));
+        },
+      ),
+    );
+    const manager = new ModelLoadManager();
+
+    const model = await manager.load("https://example.test/part.stl");
+
+    expect(model.meshes).toHaveLength(1);
   });
 
   it("accepts injected engines, for testing without the real ones", async () => {
