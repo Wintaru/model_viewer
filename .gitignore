@@ -20,6 +20,12 @@ demo/private/
 # Claude's working decision log. Delete this line to track it.
 DECISIONS.md
 
+# Claude's hand-off files (Trillian's *-HANDOFF.md / *-CHECKLIST.md
+# convention) — working notes for Josh, not tracked docs. Delete a specific
+# line here to track that one file.
+*-HANDOFF.md
+*-CHECKLIST.md
+
 # Trillian per-repo settings
 .trillian-repo.json
 

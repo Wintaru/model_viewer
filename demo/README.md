@@ -65,10 +65,10 @@ It proves four things, with two different delivery requirements:
   line only reports "SolidWorks: …" once that finishes.
 
   Serve the `demo/` directory over http to see either real-format half
-  work, for example:
+  work:
 
   ```
-  python3 -m http.server 8000 --directory demo
+  pnpm run serve:demo
   ```
 
   then open `http://localhost:8000/library-demo.html`.
