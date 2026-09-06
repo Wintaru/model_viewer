@@ -30,10 +30,10 @@ export interface UrlSourceInit {
  * `Authorization` header or a retrying transport, not a general extension
  * mechanism (ARCHITECTURE.md section 5) — the library never holds a token.
  *
- * `readRange` arrives in a later commit of this same slice (SPEC.md section
- * 10), not here: each capability `ModelSource` makes optional earns its own
- * "is the payoff worth the complexity" decision, the same way
- * `FileSourceAccessor` deferred it out of slice 1.
+ * Implements `readRange` over an HTTP `Range` request — the capability that
+ * unlocks ARCHITECTURE.md section 3's sniff-first fast path: the loader
+ * reads a small prefix to identify the format before the full file has
+ * finished downloading.
  */
 export class UrlSourceAccessor implements ModelSource {
   readonly name?: string;
@@ -54,7 +54,10 @@ export class UrlSourceAccessor implements ModelSource {
   }
 
   async read(signal?: AbortSignal): Promise<Uint8Array> {
-    const response = await this.fetchImpl(this.url, this.requestInit(signal));
+    const response = await this.fetchImpl(
+      this.url,
+      this.requestInit(signal, this.headers),
+    );
     if (!response.ok) {
       await response.body?.cancel();
       throw new Error(
@@ -64,13 +67,45 @@ export class UrlSourceAccessor implements ModelSource {
     return new Uint8Array(await response.arrayBuffer());
   }
 
+  /**
+   * Requests only `[start, end)` over HTTP `Range`. A compliant server
+   * answers `206 Partial Content` with exactly those bytes. Some proxies
+   * and CDNs strip the `Range` header instead of honoring it and answer
+   * `200` with the whole body — detected here and sliced locally, so the
+   * `[start, end)` contract holds either way rather than silently handing
+   * back more bytes than the caller asked for.
+   */
+  async readRange(
+    start: number,
+    end: number,
+    signal?: AbortSignal,
+  ): Promise<Uint8Array> {
+    const headers = new Headers(this.headers);
+    headers.set("range", `bytes=${start}-${end - 1}`);
+    const response = await this.fetchImpl(
+      this.url,
+      this.requestInit(signal, headers),
+    );
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(
+        `Failed to fetch ${String(this.url)}: ${response.status} ${response.statusText}`,
+      );
+    }
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return response.status === 206 ? bytes : bytes.subarray(start, end);
+  }
+
   // exactOptionalPropertyTypes rejects `{ headers: undefined }` /
   // `{ signal: undefined }` against RequestInit's own optional properties,
   // so this only sets a key at all when there's a real value for it.
-  private requestInit(signal: AbortSignal | undefined): RequestInit {
+  private requestInit(
+    signal: AbortSignal | undefined,
+    headers: HeadersInit | undefined,
+  ): RequestInit {
     const init: RequestInit = {};
-    if (this.headers !== undefined) {
-      init.headers = this.headers;
+    if (headers !== undefined) {
+      init.headers = headers;
     }
     if (signal !== undefined) {
       init.signal = signal;

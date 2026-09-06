@@ -89,4 +89,72 @@ describe("fromUrl", () => {
 
     expect(source.name).toBeUndefined();
   });
+
+  it("sends a Range header for readRange and returns a 206's body as-is", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response(new Uint8Array([10, 11, 12, 13]), { status: 206 }),
+      ),
+    );
+    const source = fromUrl("https://example.test/part.stp", {
+      fetch: fetchImpl,
+    });
+
+    const bytes = await source.readRange?.(0, 4);
+
+    expect(bytes).toEqual(new Uint8Array([10, 11, 12, 13]));
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://example.test/part.stp",
+      expect.objectContaining({
+        headers: expect.any(Headers) as Headers,
+      }),
+    );
+    const sentHeaders = fetchImpl.mock.calls[0]?.[1]?.headers as Headers;
+    expect(sentHeaders.get("range")).toBe("bytes=0-3");
+  });
+
+  it("preserves the configured headers alongside Range", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response(new Uint8Array(4), { status: 206 })),
+    );
+    const source = fromUrl("https://example.test/part.stp", {
+      fetch: fetchImpl,
+      headers: { Authorization: "Bearer token" },
+    });
+
+    await source.readRange?.(0, 4);
+
+    const sentHeaders = fetchImpl.mock.calls[0]?.[1]?.headers as Headers;
+    expect(sentHeaders.get("authorization")).toBe("Bearer token");
+    expect(sentHeaders.get("range")).toBe("bytes=0-3");
+  });
+
+  it("slices the response locally when the server ignores Range and answers 200", async () => {
+    const wholeFile = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    const fetchImpl = vi.fn((): ReturnType<typeof fetch> =>
+      Promise.resolve(new Response(wholeFile, { status: 200 })),
+    );
+    const source = fromUrl("https://example.test/part.stp", {
+      fetch: fetchImpl,
+    });
+
+    await expect(source.readRange?.(2, 5)).resolves.toEqual(
+      new Uint8Array([3, 4, 5]),
+    );
+  });
+
+  it("throws a descriptive error when readRange's response is not ok", async () => {
+    const fetchImpl = vi.fn((): ReturnType<typeof fetch> =>
+      Promise.resolve(
+        new Response(null, { status: 404, statusText: "Not Found" }),
+      ),
+    );
+    const source = fromUrl("https://example.test/part.stp", {
+      fetch: fetchImpl,
+    });
+
+    await expect(source.readRange?.(0, 4)).rejects.toThrow(
+      "Failed to fetch https://example.test/part.stp: 404 Not Found",
+    );
+  });
 });
