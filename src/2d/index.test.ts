@@ -144,10 +144,15 @@ describe("frameOrthographicCamera", () => {
 
     const camera = frameOrthographicCamera(modelWith([mesh]), 1);
 
-    expect(camera.left).toBeCloseTo(-0.25, 5);
-    expect(camera.right).toBeCloseTo(10.25, 5);
-    expect(camera.bottom).toBeCloseTo(-0.25, 5);
-    expect(camera.top).toBeCloseTo(10.25, 5);
+    // left/right/top/bottom are camera-local (three.js derives the
+    // projection's center from (right+left)/2 and (top+bottom)/2), so a
+    // centred drawing's frustum is symmetric around 0 regardless of where
+    // in world space the drawing itself sits — world-space centering is
+    // camera.position's job, checked separately below.
+    expect(camera.left).toBeCloseTo(-5.25, 5);
+    expect(camera.right).toBeCloseTo(5.25, 5);
+    expect(camera.bottom).toBeCloseTo(-5.25, 5);
+    expect(camera.top).toBeCloseTo(5.25, 5);
     expect(camera.position.x).toBeCloseTo(5, 5);
     expect(camera.position.y).toBeCloseTo(5, 5);
   });
@@ -166,11 +171,13 @@ describe("frameOrthographicCamera", () => {
 
     expect(camera.right - camera.left).toBeCloseTo(21, 5); // 20 * 1.05
     expect(camera.top - camera.bottom).toBeCloseTo(21, 5); // padded to match
-    // Still centred on the original box's centre, and still contains it.
-    expect(camera.left).toBeLessThanOrEqual(0);
-    expect(camera.right).toBeGreaterThanOrEqual(20);
-    expect(camera.bottom).toBeLessThanOrEqual(0);
-    expect(camera.top).toBeGreaterThanOrEqual(10);
+    // Still centred on the original box's centre, and still contains it —
+    // translate the camera-local frustum into world space via
+    // camera.position (see the test above) before comparing to the box.
+    expect(camera.position.x + camera.left).toBeLessThanOrEqual(0);
+    expect(camera.position.x + camera.right).toBeGreaterThanOrEqual(20);
+    expect(camera.position.y + camera.bottom).toBeLessThanOrEqual(0);
+    expect(camera.position.y + camera.top).toBeGreaterThanOrEqual(10);
   });
 
   it("pads the shorter axis the other way when the viewport is wider than the box", () => {
@@ -185,8 +192,10 @@ describe("frameOrthographicCamera", () => {
 
     expect(camera.top - camera.bottom).toBeCloseTo(21, 5); // 20 * 1.05
     expect(camera.right - camera.left).toBeCloseTo(42, 5); // 21 * aspect 2
-    expect(camera.left).toBeLessThanOrEqual(0);
-    expect(camera.right).toBeGreaterThanOrEqual(5);
+    // Translate the camera-local frustum into world space before checking
+    // it still contains the box — see the first test above.
+    expect(camera.position.x + camera.left).toBeLessThanOrEqual(0);
+    expect(camera.position.x + camera.right).toBeGreaterThanOrEqual(5);
   });
 
   it("floors a degenerate zero-extent axis instead of dividing by zero", () => {

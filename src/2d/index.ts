@@ -182,11 +182,22 @@ export function frameOrthographicCamera(
 
   const halfWidth = frameWidth / 2;
   const halfHeight = frameHeight / 2;
+  // OrthographicCamera's left/right/top/bottom are camera-local — offset
+  // from the camera's own position and view direction, not world
+  // coordinates (three.js's own updateProjectionMatrix() derives the
+  // projection's center from (right+left)/2 and (top+bottom)/2, so a
+  // nonzero pair here shifts the frustum off-axis, the same "lens shift"
+  // a real asymmetric-frustum camera has). World-space centering belongs
+  // entirely in position + lookAt below; centering it again here as well
+  // would shift the frustum by (centerX, centerY) a second time — measured
+  // by hand in a real browser against a model not centred at the origin
+  // (WAYFINDER.md's interactive-demo work), where it cropped and shifted
+  // the rendered drawing instead of centering it.
   const camera = new OrthographicCamera(
-    centerX - halfWidth,
-    centerX + halfWidth,
-    centerY + halfHeight,
-    centerY - halfHeight,
+    -halfWidth,
+    halfWidth,
+    halfHeight,
+    -halfHeight,
     CAMERA_NEAR,
     CAMERA_FAR,
   );
