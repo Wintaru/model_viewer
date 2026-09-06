@@ -498,6 +498,36 @@ Each slice is independently shippable.
 4. **Remote sources.** `UrlSourceAccessor` and `ResponseSourceAccessor`, plus
    the optional `readRange` path that lets the loader sniff a prefix and fetch
    the decoder in parallel with the download.
+
+   Broken down to commits, same discipline as slices 1 to 3: each row's
+   "leaves green" claim is what makes the plan checkable rather than just
+   listed.
+
+   | # | Commit | Leaves green because |
+   | --- | --- | --- |
+   | 1 | `Accessor`: `ResponseSourceAccessor` + `fromResponse` + tests | wraps a `Response` the host already obtained (SPEC.md section 7); same scope as `FileSourceAccessor` — `read()` only, no `readRange`/`stream` — because the request that produced the `Response` already went out with no Range header by the time this constructor runs, so there is no smaller request left to make |
+   | 2 | `Accessor`: `UrlSourceAccessor` + `fromUrl`, `read()` only + tests | injectable `fetch`/`headers`/`name` (`UrlSourceInit`, SPEC.md section 7), the same injectable-fetch pattern `WasmAssetAccessor` already established, with the same default-`fetch`-binding fix (REVIEW-BACKLOG.md, slice-2 planning entry) applied from the start rather than found by a second review pass |
+   | 3 | `Accessor`: `UrlSourceAccessor` — add `readRange` via an HTTP `Range` request + tests | issues a `Range: bytes=start-end` request over the same injected `fetch`; falls back to slicing the response locally when a server answers `200` instead of `206` (a proxy or CDN that strips `Range` rather than honoring it), so the contract holds either way |
+   | 4 | `Manager`: widen `ModelInput` to accept `string \| URL`, routed through `fromUrl`, and wire the sniff-first fast path into `ModelLoadManager.load()` + tests | closes the gap `ModelLoadManager.ts`'s own `ModelInput` comment already flagged ("widen this type when [fromUrl] does exist"); when the resolved source implements `readRange`, `load()` reads a small prefix, sniffs it, and starts resolving the matching lazy decoder before the full download finishes, so the import and the rest of the transfer overlap instead of running back to back (ARCHITECTURE.md section 3) — a source with no `readRange` falls back to exactly the existing whole-file-then-sniff behaviour, unchanged |
+   | 5 | Demo: `library-demo` loads the STEP and SolidWorks files through `fromUrl` instead of a manual `fetch` + `fromBuffer` | proves the packaging decision for real, over a real HTTP request in a browser, and exercises the sniff-first path this slice adds instead of only a fake `ModelSource` under Vitest |
+
+   **Why `ResponseSourceAccessor` comes before `UrlSourceAccessor`.** Simpler
+   scope first, the same ordering slice 1 used for `BufferSourceAccessor`
+   before `FileSourceAccessor`: no network, no injectable `fetch`, no
+   `readRange` — just wrapping a `Response` the host already has.
+
+   **Why `UrlSourceAccessor`'s `read()` and its `readRange` are separate
+   commits.** `FileSourceAccessor`'s own doc comment already deferred
+   `readRange` out of slice 1 commit 8 for the same reason: each capability
+   `ModelSource` makes optional earns its own decision about whether the
+   payoff is worth the complexity, rather than being designed alongside
+   `read()` on the assumption that it obviously belongs there too.
+
+   **Why the sniff-first path reads a 4096-byte prefix.** Matches
+   ARCHITECTURE.md section 3's sequence diagram (`readRange(0, 4096)`)
+   exactly, rather than picking a new number — that diagram was already
+   checked against `FormatSniffEngine`'s signatures (all within the first
+   few dozen bytes) when it was drawn.
 5. **Export and cache.** `ModelExportManager` with glTF out, plus
    `ModelCacheAccessor` and the key derivation.
 6. **DXF.** Needs D6 settled first, because the 2D viewing model is open.
