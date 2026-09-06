@@ -289,3 +289,24 @@ Blocking findings were fixed. These were not.
   invariant) — see DECISIONS.md. Fix SPEC.md's wording next time that
   section is touched; not urgent since nothing currently depends on the
   literal claim.
+
+## From building slice 5 commit 5 — the public export surface (2026-09-06)
+
+- **SPEC.md section 7a's public API sketch is stale on one line.** It shows
+  a single `loader` object exposing both `.load()` and `.export()`:
+  `const blob = await loader.export(model, { format: 'gltf' });`. The real
+  public surface is two separate objects — `new ModelLoader()` and
+  `new ModelExporter()` — because giving `ModelLoader` an `.export()`
+  method would require `ModelLoadManager` (its internal class) to import
+  `ModelExportManager`, exactly the Manager-to-Manager edge
+  `.dependency-cruiser.js`'s `no-manager-to-manager` rule exists to fail
+  the build on (ARCHITECTURE.md section 2: Manager must never call
+  Manager). A facade class defined in `src/index.ts` itself (outside
+  `src/manager/`, so the rule wouldn't fire) was considered and rejected:
+  it would replace `ModelLoader`'s current identity — a straight
+  re-export of `ModelLoadManager`, slice 1 commit 12 — with a new
+  wrapping class, breaking every existing call site that constructs
+  `ModelLoader` with `ModelLoadManager`'s positional constructor
+  arguments (the demo, and `ModelLoadManager.test.ts`'s injected fakes),
+  for a convenience that only saves one `new` call at the call site. Fix
+  SPEC.md's sketch next time that section is touched.

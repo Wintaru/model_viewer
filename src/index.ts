@@ -21,6 +21,17 @@ export type {
 } from "./manager/ModelLoadManager";
 
 /**
+ * A second, separate object next to `ModelLoader` — not a `.export()`
+ * method on `ModelLoader` itself. SPEC.md section 7a's public API sketch
+ * shows one `loader` doing both; giving `ModelLoader` an `export()` would
+ * mean `ModelLoadManager` importing `ModelExportManager`, exactly the
+ * Manager-to-Manager edge `.dependency-cruiser.js`'s `no-manager-to-manager`
+ * rule exists to fail the build on. See REVIEW-BACKLOG.md.
+ */
+export { ModelExportManager as ModelExporter } from "./manager/ModelExportManager";
+export type { ExportOptions } from "./manager/ModelExportManager";
+
+/**
  * Re-exported so a caller can build their own `StepDecoderConfig` — e.g.
  * to share one lazily-constructed OCCT worker across several `ModelLoader`
  * instances — without a deep import into `src/utility/`. The common case
