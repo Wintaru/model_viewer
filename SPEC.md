@@ -583,14 +583,18 @@ Each slice is independently shippable.
    REVIEW-BACKLOG.md alongside the `optionsHash` gap above, both to close
    together whenever a real caller or a real options parameter exists.
 
-6. **DXF.** Needs D6 settled first, because the 2D viewing model is open.
+6. **DXF.** Unblocked by D6 (2026-09-06, WAYFINDER.md): a second adapter,
+   separate from the three.js one, carries the orthographic camera, pan/zoom
+   and layer visibility a drawing needs. v1 scope is model-space geometry plus
+   layers; paper-space sheets are deferred to
+   [issue #1](https://github.com/Wintaru/model_viewer/issues/1). Not yet
+   broken down to commits — see the note at the end of slice 2's table: that
+   happens when the slice is actually reached, not in advance.
 
 ## 11. Still open
 
-These do not block slices 1 to 5.
+These do not block slices 1 to 6.
 
-- **D6** — how 2D fits the viewer. Loading is settled; the drawing camera,
-  layers and sheets are not.
 - **D7** — what the demo page looks like.
 - **D4, D5** — PMI, and AP242 tessellated files.
 - **D9 follow-ups** — separating PMI geometry from part geometry, the

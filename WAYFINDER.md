@@ -39,6 +39,16 @@ promised SLDDRW, which is now out of scope: no open path to it exists.
   three.js object. Face and strip identity ships from v1, because adding it
   later is a breaking change. The library can export a decoded result so the
   host can cache it.
+- **D6 — DXF gets a second adapter; v1 viewing is model-space plus layers
+  only, 2026-09-06.** A drawing's navigation (orthographic, pan/zoom, layer
+  toggles, paper-space sheets) has nothing in common with the 3D adapter's
+  orbit camera, so it ships as its own small adapter — sharing the loader,
+  registry and neutral core with the three.js adapter, carrying no 3D-only
+  concepts, and leaving the three.js adapter with no 2D-only concepts either.
+  Paper-space sheet switching is real CAD-viewer behavior but is deferred past
+  v1, tracked in
+  [issue #1](https://github.com/Wintaru/model_viewer/issues/1). Slice 6 is now
+  unblocked.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP bounding
   box. See `DECISIONS.md`.
@@ -52,7 +62,7 @@ promised SLDDRW, which is now out of scope: no open path to it exists.
 
 The settled decisions are bundled into **`SPEC.md`** (2026-09-04 12:27): layer
 map, neutral geometry model, public API, packaging, and a six-slice build
-order. Slices 1 to 5 are unblocked. Slice 6 waits on D6.
+order. All six slices are now unblocked; D6 settled slice 6 on 2026-09-06.
 
 ## Not yet specified — the frontier
 
@@ -88,19 +98,21 @@ Narrow and concrete. Find out whether OCCT can read `COMPLEX_TRIANGULATED_FACE`
 through a different call, or whether this needs a separate reader. At minimum,
 detect the case and report it honestly.
 
-### D6 — How does 2D fit the registry? `[grilling]` — mostly settled by D10
+### D11 — Does SLDDRW hold a cached-view container like SLDPRT's? `[research]`
 
-D10 answers the loading half: DXF is just another decoder in the same registry,
-reached through the same entry point and lazily imported like the rest.
+Raised while settling D6. SLDDRW is out of v1 scope per a call made in
+`research/FINDINGS.md` section 5 ("treat it as separate work"), but that call
+predates D8/D9 — it was written before anyone knew SLDPRT hides a decodable
+cached mesh behind plain deflate. SolidWorks drawings plausibly cache view
+graphics the same way, for fast redraw, and nobody has looked with the
+container-scan approach that cracked SLDPRT open.
 
-What is still open is the **viewing** half. A drawing is not a flat 3D model.
-It wants an orthographic camera, pan and zoom rather than orbit, layer
-visibility, and paper-space sheets. Decide whether the three.js adapter grows a
-2D mode, or whether a second adapter handles drawings while sharing the loader,
-the registry and the theming.
-
-Cheap to defer: it changes the adapter, not the core, and D3 already put the
-core behind a neutral return shape.
+Needs real SLDDRW sample files to scan — Josh has some. Tracked in
+[issue #2](https://github.com/Wintaru/model_viewer/issues/2). Not a blocker:
+slice 6 and D6's adapter split don't depend on the answer, and if SLDDRW does
+turn out to be feasible, its viewing needs (sheets, layers) are the same
+concepts D6's adapter and issue #1 already cover — this would add a decode
+engine, not a new viewer architecture.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 
