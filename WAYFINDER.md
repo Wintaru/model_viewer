@@ -78,6 +78,18 @@ scope by absence of a decision, not by absence of a path. See D12.
   [issue #2](https://github.com/Wintaru/model_viewer/issues/2): SLDDRW is no
   longer "no open path," it is an untaken one. Whether it actually joins v1
   is a separate call — see D12.
+- **D12 (partial) — SLDDRW extraction needs real container parsing, not a
+  bounded version of the existing blind scan, 2026-09-06 17:52.** The blind
+  byte-by-byte deflate scan (`collect`/`inflateAll` in
+  `SolidWorksDecodeEngine.ts`) ran 400+ seconds with zero output against one
+  of the smallest real SLDDRW samples available (215 KB) — not just slow on
+  the known 13.5 MB outlier, stuck on ordinary-sized files too, and
+  unpreemptable from outside since it's one long synchronous loop. Chose
+  real OLE2/compound-file structural parsing over bounding the existing scan
+  with a timeout or dropping SLDDRW from v1 — a timeout ships "fails cleanly
+  on most files," not "SLDDRW actually works." Opened D13 for the concrete
+  research this requires; D12's own Engine-shape sub-question now waits on
+  D13's answer.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP bounding
   box. See `DECISIONS.md`.
@@ -148,16 +160,14 @@ D11 settled the technical question: a decodable tessellation cache exists.
 This is the scope question that follows it, same shape as D2 (SolidWorks
 scope) and D6 (DXF adapter split) before it. Open sub-questions:
 
-- Does `SolidWorksDecodeEngine` grow a SLDDRW mode, or does SLDDRW earn its
-  own Engine? A drawing is sheets and views over possibly several referenced
-  parts/assemblies, not one body — closer to DXF's shape than to a single
-  SLDPRT.
-- The container scan that found the cache needed one more explicit
-  raw-deflate recursion past `scan-deflate.py`'s own output-cap ceiling
-  (`research/FINDINGS.md` section 5). Confirm whether that is specific to
-  the one sample file, or a real structural difference from SLDPRT worth
-  fixing in the shared scan helper before it silently under-scans another
-  file the same way.
+- ~~Does `SolidWorksDecodeEngine` grow a SLDDRW mode, or does SLDDRW earn its
+  own Engine?~~ Blocked on the extraction-approach question below — deciding
+  the Engine shape before knowing whether extraction is even fast enough to
+  ship would be premature. Revisit once D13 (below) has an answer.
+- ~~The container scan that found the cache needed one more explicit
+  raw-deflate recursion past `scan-deflate.py`'s own output-cap ceiling…~~
+  **Resolved and superseded, 2026-09-06 — see below: the real problem is
+  much bigger than under-scanning.**
 - Viewing: D6's `/2d` adapter already carries orthographic camera, pan/zoom
   and layer toggles. Sheets and multiple views per sheet are new surface on
   top of that, not obviously a fit without checking.
@@ -165,7 +175,76 @@ scope) and D6 (DXF adapter split) before it. Open sub-questions:
   reproducible" caveat D9's follow-ups already carry for parts may apply
   here too.
 
-Not a blocker on anything already shipped.
+**2026-09-06 17:52 — the scan-cost sub-question resolved, and it's worse than
+logged.** A live investigation (a real user report: "SLDDRW files don't seem
+to load") found `FormatSniffEngine.looksLikeSolidWorks` matches every SLDDRW
+(same byte-4-7 `[0,0,0,4]` container signature as SLDPRT — confirmed against
+a real file), so every SLDDRW gets dispatched to `SolidWorksDecodeEngine`,
+which is scoped and tested for parts only. Timed `extractTessDataStreams`
+directly against one of the *smallest* real SLDDRW samples available
+(215,881 bytes, smaller than the 358 KB SLDPRT the same session had just
+finished decoding in under a minute): it ran 400+ seconds with **zero
+output** — not slow, not under-scanning, effectively stuck. The scan is a
+tight synchronous loop with no `await`, so nothing outside it (a vitest
+timeout, a hypothetical wall-clock guard bolted on from the caller) can even
+preempt it mid-run. This is the *same* brute-force-every-byte-offset
+algorithm the original D11 investigation already knew could churn for 5+
+minutes on the 13.5 MB outlier's largest decompressed buffer — this new
+finding shows the failure mode isn't specific to that one large file, it's
+inherent to the algorithm applied to a drawing's stream structure at any
+size tried so far.
+
+**Decision: pursue real container parsing, not a bounded blind scan.**
+Josh's call, given three framed options (bound the existing scan with a
+timeout / drop SLDDRW from v1 entirely / parse the real container structure
+directly). A timeout would ship something that mostly fails cleanly rather
+than mostly hangs — not the same as SLDDRW actually working. Dropping it
+loses real value (D11 already proved the cache is there and decodable in
+principle). Real parsing is the only path to SLDDRW being fast enough to
+ship, at the cost of being the bigger lift of the three. Opened as **D13**
+below — the concrete research question this decision creates.
+
+Not a blocker on anything already shipped. `FormatSniffEngine` misidentifying
+SLDDRW as `"solidworks"` and hanging instead of failing fast is a real,
+separate, smaller bug in current behavior — tracked for `REVIEW-BACKLOG.md`,
+not fixed inside this wayfinder session (planning, not implementing).
+
+### D13 — What does real OLE2/compound-file container parsing look like for a 2014+ SolidWorks file? `[research]`
+
+D12's scan-cost finding rules out the blind byte-by-byte offset scan as a
+real path to SLDDRW support. The alternative is parsing the container's
+actual structure well enough to jump straight to the tessellation-bearing
+stream, the way any OLE2 Compound File Binary Format reader would (SolidWorks
+2014+'s container is exactly this shape per `ARCHITECTURE.md` section 6's
+"Stage 1" — this project never had to parse it structurally before because
+the blind scan was cheap enough for a single small part file).
+
+Open questions this needs answered before any implementation:
+
+- Is a 2014+ SolidWorks container a standard OLE2/CFBF structure (the same
+  family `.doc`/`.xls` used), or SolidWorks-proprietary on top of it? If
+  standard OLE2, a well-understood directory-and-FAT structure means a
+  reader can walk it directly to the named stream instead of scanning.
+- Does prior art exist for reading this without a vendor SDK? `openswx` was
+  already surfaced once (D2) for property/metadata parsing — check whether
+  it (or another MIT/BSD reader) parses the container structure itself, not
+  just the tessellation record layout `research/d9-decode.py` already
+  covers.
+- Assuming OLE2: is the current recursive deflate-stream detection
+  (`collect`/`inflateAll` in `SolidWorksDecodeEngine.ts`) still needed at all
+  once the real stream is found directly, or does structural parsing replace
+  it entirely? (`research/FINDINGS.md` section 5 and `DECISIONS.md`'s D11
+  entry both describe the *existing* blind-scan approach — this question is
+  about whether it survives once a real reader exists.)
+- Scope check once the shape is known: does this become a new
+  `Common`-layer utility (an OLE2 reader, reusable if IGES/STEP-adjacent
+  formats ever need one) or a SLDDRW/SolidWorks-specific Accessor? Affects
+  `ARCHITECTURE.md` section 2's layer table, not just this one decision.
+
+Blocks D12's Engine-shape sub-question (does `SolidWorksDecodeEngine` grow a
+mode, or does SLDDRW get its own Engine) — that can't be answered until the
+extraction approach's actual shape is known. Not a blocker on anything
+already shipped.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 
