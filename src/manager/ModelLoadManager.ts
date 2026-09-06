@@ -14,13 +14,6 @@ import { sha256Hex } from "../utility/HashUtil";
 import { ModuleRegistry } from "../utility/ModuleRegistry";
 
 /**
- * The three formats that actually reach a decoder — `'dxf'` sniffs
- * successfully (since slice 1 commit 9) but has no decoder yet, so it can
- * never reach {@link ModelLoadManager.decodeWithCache}.
- */
-type CacheableFormatId = "step" | "solidworks" | "stl";
-
-/**
  * A decoder-version component for the cache key (ARCHITECTURE.md section
  * 6a: `cacheKey = hash(file bytes) + decoderName + decoderVersion +
  * optionsHash`). Hand-maintained, not derived from each decoder: the
@@ -33,11 +26,20 @@ type CacheableFormatId = "step" | "solidworks" | "stl";
  * changes size or shape in a way worth hashing automatically. Bump the
  * relevant entry whenever a decoding Engine's *output* changes for the
  * same input bytes.
+ *
+ * Keyed by `FormatId` directly, not a separate "cacheable formats" alias:
+ * every sniffable format now reaches a decoder (dxf, commit 5), so a
+ * once-genuine subset would otherwise just be a duplicate enumeration of
+ * the same set — exactly the drift risk this project's own "single source
+ * of truth for derived knowledge" principle exists to avoid. If a future
+ * format is ever added that skips caching, that's the moment to reintroduce
+ * a real subset type.
  */
-const DECODER_VERSIONS: Record<CacheableFormatId, string> = {
+const DECODER_VERSIONS: Record<FormatId, string> = {
   step: "1",
   solidworks: "1",
   stl: "1",
+  dxf: "1",
 };
 
 /**
@@ -100,6 +102,17 @@ export interface SolidWorksDecoder {
 }
 
 /**
+ * What `ModuleRegistry`'s `"dxf"` loader must resolve to. Same shape as
+ * `StepDecoder`/`SolidWorksDecoder` — matches `DxfDecodeEngineProxy`'s own
+ * `transform`, declared independently for the same reason: a fake decoder
+ * in a test, or a caller building their own registry, needs no import of
+ * the real proxy (and the `Worker` it would construct).
+ */
+export interface DxfDecoder {
+  transform(bytes: Uint8Array): Promise<DecodedModel>;
+}
+
+/**
  * The whole public surface for loading, per SPEC.md section 3: ask an
  * Accessor for bytes, ask the sniffer Engine what the format is, resolve
  * the decoder for that format, run it.
@@ -134,6 +147,15 @@ export class ModelLoadManager {
     // idea what storage a host has, so caching is opt-in per instance
     // rather than on by default with nowhere real to write to.
     private readonly cache?: ModelCacheAccessor,
+    // Same reasoning as solidWorksDecoders: no wasm asset or other
+    // per-instance configuration for DxfDecodeEngineProxy to need, so a
+    // real, parameterless default covers every real caller. Appended last,
+    // after cache, matching how every prior slice's new constructor
+    // parameter landed at the end rather than reordering existing ones.
+    private readonly dxfDecoders: ModuleRegistry<
+      "dxf",
+      DxfDecoder
+    > = createDxfDecoders(),
   ) {
     this.stepDecoders =
       typeof stepDecoders === "string"
@@ -230,6 +252,15 @@ export class ModelLoadManager {
         this.meshDecoder.transform(bytes),
       );
     }
+    if (format === "dxf") {
+      // Same shape as `solidworks` above: dxfDecoders always has a real
+      // default, so there is no "not configured" branch.
+      const decoderPromise = this.dxfDecoders.get("dxf");
+      markSettled(decoderPromise);
+      const bytes = await bytesPromise;
+      const decoder = await decoderPromise;
+      return this.decodeWithCache("dxf", bytes, () => decoder.transform(bytes));
+    }
     if (format === undefined) {
       await bytesPromise;
       return createEmptyDecodedModel({
@@ -239,10 +270,16 @@ export class ModelLoadManager {
       });
     }
     await bytesPromise;
+    // Unreachable today — every FormatId member (step, solidworks, stl,
+    // dxf) has its own branch above, so `format` narrows to `never` here.
+    // Left in place, not removed, as the defensive fallback for whenever
+    // FormatId next grows a format this method hasn't been updated for —
+    // `String(format)` rather than embedding it directly keeps that
+    // future case's message correct despite today's `never` type.
     return createEmptyDecodedModel({
       severity: "error",
       code: "unsupported-format",
-      message: `Recognized this as a ${format} file, but no decoder for it exists in this version.`,
+      message: `Recognized this as a ${String(format)} file, but no decoder for it exists in this version.`,
     });
   }
 
@@ -259,7 +296,7 @@ export class ModelLoadManager {
    * decode itself — even though the download already happened.
    */
   private async decodeWithCache(
-    format: CacheableFormatId,
+    format: FormatId,
     bytes: Uint8Array,
     // MeshDecodeEngine.transform() is synchronous (unlike the step/
     // solidworks proxies' transform(), which cross a Worker); `| Promise`
@@ -320,6 +357,19 @@ function createSolidWorksDecoders(): ModuleRegistry<
     solidworks: () =>
       import("../engine/SolidWorksDecodeEngineProxy").then(
         (module) => new module.SolidWorksDecodeEngineProxy(),
+      ),
+  });
+}
+
+/**
+ * Builds the real, lazy `'dxf'` decoder registry — same D10 lazy format
+ * registry as `createSolidWorksDecoders`, no configuration to accept.
+ */
+function createDxfDecoders(): ModuleRegistry<"dxf", DxfDecoder> {
+  return new ModuleRegistry({
+    dxf: () =>
+      import("../engine/DxfDecodeEngineProxy").then(
+        (module) => new module.DxfDecodeEngineProxy(),
       ),
   });
 }

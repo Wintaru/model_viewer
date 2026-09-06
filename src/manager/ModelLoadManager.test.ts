@@ -6,6 +6,7 @@ import { MeshDecodeEngine } from "../engine/MeshDecodeEngine";
 import { ModuleRegistry } from "../utility/ModuleRegistry";
 import {
   ModelLoadManager,
+  type DxfDecoder,
   type SolidWorksDecoder,
   type StepDecoder,
 } from "./ModelLoadManager";
@@ -91,6 +92,11 @@ function solidWorksBytes(): Uint8Array {
   return new Uint8Array([0xaa, 0xaa, 0xaa, 0xaa, 0x00, 0x00, 0x00, 0x04]);
 }
 
+/** FormatSniffEngine's DXF signature: an ASCII "0" then "SECTION". */
+function dxfBytes(): Uint8Array {
+  return ascii("0\nSECTION\n");
+}
+
 describe("ModelLoadManager", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -138,24 +144,6 @@ describe("ModelLoadManager", () => {
     const model = await manager.load(source);
 
     expect(model.meshes).toHaveLength(1);
-  });
-
-  it("reports unsupported-format for a recognized-but-undecodable format", async () => {
-    const manager = new ModelLoadManager();
-
-    // DXF, not STEP: STEP is now conditionally supported (see the
-    // occt-decoder-not-configured tests below), so it no longer
-    // exercises this fallback the way it did before commit 6.
-    const model = await manager.load(ascii("0\r\nSECTION\r\n"));
-
-    expect(model.meshes).toEqual([]);
-    expect(model.diagnostics).toContainEqual(
-      expect.objectContaining({
-        severity: "error",
-        code: "unsupported-format",
-      }),
-    );
-    expect(model.diagnostics[0]?.message).toContain("dxf");
   });
 
   it("reports occt-decoder-not-configured for a STEP file with no decoder configured", async () => {
@@ -261,6 +249,61 @@ describe("ModelLoadManager", () => {
     );
 
     await expect(manager.load(solidWorksBytes())).rejects.toThrow(
+      "chunk fetch failed",
+    );
+  });
+
+  it("dispatches a DXF file to a configured decoder", async () => {
+    let receivedBytes: Uint8Array | undefined;
+    const fakeDecoder: DxfDecoder = {
+      transform: (bytes) => {
+        receivedBytes = bytes;
+        return Promise.resolve({
+          units: "mm",
+          meshes: [],
+          tree: [],
+          metadata: { source: "fake-dxf" },
+          diagnostics: [],
+        });
+      },
+    };
+    const dxfDecoders = new ModuleRegistry<"dxf", DxfDecoder>({
+      dxf: () => Promise.resolve(fakeDecoder),
+    });
+    // No "not configured" case to test here, same as solidworks:
+    // dxfDecoders always has a real default, so the only thing worth
+    // injecting is a fake decoder, in the sixth constructor slot (appended
+    // after cache, not reordering the existing five).
+    const manager = new ModelLoadManager(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      dxfDecoders,
+    );
+    const bytes = dxfBytes();
+
+    const model = await manager.load(bytes);
+
+    expect(model.metadata).toEqual({ source: "fake-dxf" });
+    expect(receivedBytes).toEqual(bytes);
+  });
+
+  it("rejects when the configured dxf decoder fails to resolve", async () => {
+    const dxfDecoders = new ModuleRegistry<"dxf", DxfDecoder>({
+      dxf: () => Promise.reject(new Error("chunk fetch failed")),
+    });
+    const manager = new ModelLoadManager(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      dxfDecoders,
+    );
+
+    await expect(manager.load(dxfBytes())).rejects.toThrow(
       "chunk fetch failed",
     );
   });
