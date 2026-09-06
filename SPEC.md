@@ -15,7 +15,7 @@ All conversion runs on the client. Version 1 opens:
 | Neutral CAD | STEP, IGES | `occt-import-js` (OCCT through WebAssembly) |
 | SolidWorks | SLDPRT, SLDASM | Our own decoder, see `research/d9-decode.py` |
 | Mesh | STL, OBJ, PLY, glTF, 3MF | three.js loaders |
-| 2D drawings | DXF | `dxf-viewer` |
+| 2D drawings | DXF | Our own parser — see D6, WAYFINDER.md |
 
 Out of v1: DWG (only a GPL reader exists), SLDDRW (no open path), PMI, and
 Parasolid B-rep.
@@ -63,8 +63,8 @@ boundary-crossing import fails `depcruise src` instead of only living in prose.
 
 ### Client
 
-The host application, and our demo page. Neither knows that OCCT or `dxf-viewer`
-exist. Both call a Manager.
+The host application, and our demo page. Neither knows that OCCT or our DXF
+parser exist. Both call a Manager.
 
 ### Manager — orchestration, stable
 
@@ -336,9 +336,11 @@ One package, with the decoders behind dynamic `import()`.
 
 The reason is measured, not assumed. On this machine
 `occt-import-js.wasm` is 7.6 MB raw, **3.1 MB gzip and 2.3 MB brotli**.
-`dxf-viewer` is about 790 KB unpacked. Mesh formats are nearly free. A single
-bundle would charge every consumer roughly 3 MB before anything appeared, which
-for a library other people embed is disqualifying.
+Mesh formats are nearly free. A single bundle would charge every consumer
+roughly 3 MB before anything appeared, which for a library other people embed
+is disqualifying. DXF's own parser is our own dependency-free code (D6,
+WAYFINDER.md, 2026-09-06) rather than a third-party package, so it carries no
+separate bundle-size cost worth measuring here.
 
 Entry points:
 
@@ -587,9 +589,59 @@ Each slice is independently shippable.
    separate from the three.js one, carries the orthographic camera, pan/zoom
    and layer visibility a drawing needs. v1 scope is model-space geometry plus
    layers; paper-space sheets are deferred to
-   [issue #1](https://github.com/Wintaru/model_viewer/issues/1). Not yet
-   broken down to commits — see the note at the end of slice 2's table: that
-   happens when the slice is actually reached, not in advance.
+   [issue #1](https://github.com/Wintaru/model_viewer/issues/1).
+
+   Broken down to commits, same discipline as slices 1 to 5: each row's
+   "leaves green" claim is what makes the plan checkable rather than just
+   listed.
+
+   | # | Commit | Leaves green because |
+   | --- | --- | --- |
+   | 1 | `Common`: `DecodedMesh` gains an optional `topology` field | `topology?: 'triangles' \| 'lines'`, defaulting to `'triangles'` when absent — additive and backward-compatible, so every existing decoder, test and consumer (`toThree`, `GltfEncodeEngine`) is untouched. Types only, no runtime, same as slice 1 commit 5. See D6's refinement in WAYFINDER.md for why this is needed at all: `DecodedMesh` was pure triangle topology with no way to represent a drawing's lines. |
+   | 2 | `Utility`: `ArcTessellationUtil` + tests | a generic 2D circular-arc-to-line-segment tessellation (`tessellateArc(centerX, centerY, radius, startAngleRad, endAngleRad, segments): Float32Array`, flat x,y pairs) — genuinely domain-free circle geometry, no dependency on `Common`, DXF, or any other layer, so it stays a leaf. Tests cover a full-circle sweep, a partial arc, an arc that wraps past 0°/360°, and that the segment count matches what was asked for. |
+   | 3 | `Engine`: `DxfDecodeEngine` + tests | ASCII DXF's group-code/value pairs, tokenized into a flat list, walked once as a state machine tracking the current section (`HEADER`, `ENTITIES`, everything else ignored) and, inside `ENTITIES`, the current entity type. Handles `LINE`, `CIRCLE`, `ARC` and `LWPOLYLINE` (straight segments only — see below), reads `$INSUNITS` from `HEADER` to convert inches/mm (anything else assumed mm, with a diagnostic, the same posture `MeshDecodeEngine`'s `units-assumed-mm` already established for STL). One `DecodedMesh` per DXF layer (group code `8`), `topology: 'lines'`, named after the layer — so layer visibility in the adapter is just toggling meshes by name, no new field needed. Every other entity type (`TEXT`, `MTEXT`, `DIMENSION`, `INSERT`, `HATCH`, `SPLINE`, `3DFACE`, …) is counted and skipped, folded into one summary diagnostic rather than one per entity. An unreadable or entity-less file returns `createEmptyDecodedModel` with a diagnostic, never a silently empty success. Tested against small hand-built ASCII DXF fixtures (no real DXF file exists anywhere in this repository or the NIST corpus to decode instead) — one fixture per entity kind, plus one exercising layer grouping and one exercising the unit conversion, each asserting exact expected coordinates computed by hand. |
+   | 4 | `Engine`: `DxfDecodeEngineProxy` + its paired `dxf.worker.ts` + tests | the same shape slice 3 commit 5 established for SolidWorks: `transform(bytes): Promise<DecodedModel>` forwarding over `WorkerTransport` to `DxfDecodeEngine` running worker-side, tested against an injected fake worker the same way `SolidWorksDecodeEngineProxy.test.ts` already is. No wasm asset to inject, same as SolidWorks's proxy — the worker constructs `new DxfDecodeEngine()` directly. |
+   | 5 | `Manager`: wire `'dxf'` through `ModuleRegistry` into `ModelLoadManager` + tests | replaces the `unsupported-format` fallback for `'dxf'` (already sniffed since slice 1 commit 9) with a lazy `import()` of the proxy, the same shape `'solidworks'` got in slice 3 commit 6 — a real, parameterless default, since there is no asset URL to configure. |
+   | 6 | `Client`: the `/2d` adapter — `toThreeDrawing` + tests | D6's second adapter, made real: a pure, stateless transform from `DecodedModel` to a three.js scene built from `THREE.LineSegments` (one per mesh, respecting `topology: 'lines'`), plus a helper that builds an `OrthographicCamera` framed to the drawing's bounds and a `setLayerVisible(name, visible)` function that toggles a mesh's `visible` flag by its `name` (the layer name, per commit 3). No pan/zoom controls of its own — those compose from the camera the same way `OrbitControls` composes with `toThree`'s output, not something this adapter needs to own. Deliberately does **not** touch `toThree`: D6 was explicit that the three.js adapter gains no 2D-only concepts, so a `'lines'`-topology mesh fed to `toThree` by mistake is a documented misuse, not a case it special-cases around. New `./2d` entry in `package.json`'s `exports` map, alongside `.` and `./three`. |
+   | 7 | Demo: extend `library-demo` to load a DXF file end to end | a small hand-authored `.dxf` fixture (our own content — legally clean the same way `demo/nist-ftc-11.stp`'s provenance is clean, and DXF's plain-text format makes hand-authoring realistic, unlike a binary CAD format), decoded off the main thread and rendered through the new `/2d` adapter beside the existing STL, STEP and SolidWorks parts — proves the slice end to end in a real browser. |
+
+   **Why our own parser, not `dxf-viewer`.** SPEC.md originally named
+   `dxf-viewer` as the DXF route (section 1, section 8). Checked against the
+   actual `DecodedModel` shape while breaking this slice down and found it
+   doesn't fit: `dxf-viewer` decodes and renders together through three.js
+   internally, which can't sit in the Engine layer (must stay
+   renderer-agnostic, the same rule that already keeps OCCT and SolidWorks
+   decoder-only). Recorded as D6's refinement in WAYFINDER.md, 2026-09-06.
+
+   **Why lines are a mesh field (`topology`), not a new sibling type.** A
+   `DecodedModel.lines: DecodedLineSet[]` alongside `meshes` was the other
+   option considered. Rejected because it would need `SceneNode.meshIndices`
+   to grow a second, parallel indexing scheme (or a discriminated union) to
+   reference it — real new surface on the *stable* core, for one format
+   family. An optional field on the existing `DecodedMesh`, defaulting to the
+   triangle behavior every other decoder already has, changes nothing for
+   anyone who doesn't set it.
+
+   **Why `LWPOLYLINE` bulge (curved segments within a polyline) is ignored in
+   v1.** A nonzero bulge value turns a polyline segment into an arc, which
+   this slice's tessellation could handle in principle, but detecting and
+   converting it correctly needs real DXF sample files to verify against —
+   none exist in this repository, the same gap that limits commit 3's tests
+   to hand-built fixtures. Every entity with a nonzero bulge is decoded as a
+   straight segment and flagged with a diagnostic, rather than guessed.
+   Deferred to [issue #3](https://github.com/Wintaru/model_viewer/issues/3),
+   to pick up once a real drawing with curved polylines is available to test
+   against.
+
+   **Why block references (`INSERT`) are out of scope.** A block is a named
+   group of entities defined once and instanced by reference, often how a
+   real drawing's title block and standard symbols are built — skipping it
+   is a real, visible gap, not a cosmetic one. Expanding a block reference
+   correctly needs its own transform and nesting logic (a block can insert
+   another block), which is genuinely new machinery this slice doesn't need
+   to invent to prove the format works end to end. Counted and reported via
+   the same skipped-entity diagnostic as `TEXT`/`DIMENSION`/etc., and
+   deferred to [issue #4](https://github.com/Wintaru/model_viewer/issues/4).
 
 ## 11. Still open
 

@@ -49,6 +49,20 @@ promised SLDDRW, which is now out of scope: no open path to it exists.
   v1, tracked in
   [issue #1](https://github.com/Wintaru/model_viewer/issues/1). Slice 6 is now
   unblocked.
+  **Refined 2026-09-06, once the actual `DecodedModel` shape got checked
+  against DXF's geometry.** `DecodedModel.meshes` was pure triangle topology
+  with no layer concept — "share the neutral core" wasn't automatically true.
+  Extended `DecodedMesh` with an optional `topology?: 'triangles' | 'lines'`
+  (default `'triangles'`, so nothing existing changes), one mesh per DXF
+  layer, named after the layer. `DxfDecodeEngine` is our own small
+  dependency-free entity parser (LINE/LWPOLYLINE/CIRCLE/ARC/POLYLINE,
+  tessellating curves), not the `dxf-viewer` package SPEC.md originally
+  named — that package decodes and renders together through three.js
+  internally, which can't sit in a renderer-agnostic Engine. Rejected
+  alternative: hand DXF bytes to `dxf-viewer` directly and skip the neutral
+  model for this one format. Rejected because it would break the "one shared
+  core" promise every other format keeps — export, caching and headless use
+  would stop working uniformly for DXF specifically.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP bounding
   box. See `DECISIONS.md`.

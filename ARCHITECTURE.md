@@ -226,7 +226,7 @@ flowchart LR
     fstep -->|"dynamic import"| cstep["chunk: occt<br/><b>2.3 MB brotli</b><br/>(measured)"]
     fsw -->|"dynamic import"| csw["chunk: solidworks<br/>our TypeScript<br/>(no WASM)"]
     fmesh -->|"dynamic import"| cmesh["chunk: mesh<br/>three.js loaders"]
-    fdxf -->|"dynamic import"| cdxf["chunk: dxf<br/>791 KB unpacked<br/>(measured)"]
+    fdxf -->|"dynamic import"| cdxf["chunk: dxf<br/>our own parser<br/>(no WASM, no three.js)"]
 
     core["core entry<br/>loader · sniffer · model<br/>always loaded"] --> sniff
 
