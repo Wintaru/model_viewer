@@ -237,9 +237,28 @@ This is not legal advice. Get a real opinion before the project gets popular.
 
 ### SLDDRW
 
-`openswx` already reads drawing sheet names and view references. The geometry
-of a drawing is a separate data model again: sheets, views, dimensions and a
-title block. Treat it as separate work, not as a small addition to SLDPRT.
+**Resolved 2026-09-06 (D11): yes, SLDDRW caches tessellation the same way
+SLDPRT does.** Confirmed against a real customer drawing file — out of band,
+not part of this repository's tracked corpus, and gitignored per this
+project's confidentiality rule (`CLAUDE.md`). The container shape differs
+from SLDPRT's (one dominant outer raw-deflate stream rather than many small
+ones — `scan-deflate.py`'s own per-stream output cap silently stopped
+scanning once it hit that first large stream, so finding the rest needed one
+more explicit layer of raw-deflate recursion past it), but one nested stream
+inside it carries the exact same fingerprint SLDPRT's cached mesh carries:
+the `TessData` magic and the `uoTempFaceTessData_c`/`uoTempBodyTessData_c`
+class-name pair. `research/d9-decode.py`'s `decode_stream`/`_scan` — the
+record layout already reverse-engineered for SLDPRT, used unmodified — parses
+real triangles with plausible coordinates and unit-length normals straight
+out of it.
+
+`openswx` already reads drawing sheet names and view references, but the
+tessellation-scale mesh cache is new territory it doesn't cover. This
+reopens SLDDRW as a real decode target rather than "no open path" — the same
+shortcut that made SLDPRT tractable (D8/D9) applies here too. See
+`WAYFINDER.md`'s D11 entry for what this changes, and D12 for what is still
+undecided (whether SLDDRW joins v1, and what decoding and viewing it
+actually requires).
 
 ## 6. Licensing
 

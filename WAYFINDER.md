@@ -16,6 +16,10 @@ proprietary SDK an open-source project cannot redistribute.
 Revised 2026-09-04 12:14, after D0, D1 and D2 settled. The original wording
 promised SLDDRW, which is now out of scope: no open path to it exists.
 
+**Revised again 2026-09-06 — D11 found that a path does exist** (a decodable
+tessellation cache, the same shortcut SLDPRT uses). SLDDRW is out of v1
+scope by absence of a decision, not by absence of a path. See D12.
+
 ## Decisions so far
 
 - **D0 — The deliverable is an embeddable npm library, 2026-09-04 12:14.**
@@ -29,7 +33,8 @@ promised SLDDRW, which is now out of scope: no open path to it exists.
   tessellation (working) plus properties, mass properties, assembly tree and
   preview. No Parasolid B-rep, no PMI, in v1.
 - **Formats in v1, 2026-09-04 12:14.** STEP/IGES, SLDPRT/SLDASM, mesh formats,
-  and 2D DXF. Not DWG (GPL only) and not SLDDRW (no open path).
+  and 2D DXF. Not DWG (GPL only) and not SLDDRW (no open path — **superseded
+  by D11, 2026-09-06: a path exists, but joining v1 is undecided, see D12**).
 - **D10 — One package, lazy format registry, 2026-09-04 12:19.** The caller
   opens a file; the library sniffs the format and dynamic-`import()`s only that
   decoder. Measured: the OCCT WASM is 3.1 MB gzip / 2.3 MB brotli, so one
@@ -63,6 +68,16 @@ promised SLDDRW, which is now out of scope: no open path to it exists.
   model for this one format. Rejected because it would break the "one shared
   core" promise every other format keeps — export, caching and headless use
   would stop working uniformly for DXF specifically.
+- **D11 — Yes: SLDDRW caches tessellation the same way SLDPRT does,
+  2026-09-06.** Confirmed against a real customer drawing file (out of band,
+  gitignored — see `research/FINDINGS.md` section 5). One nested stream
+  carries the same `uoTempFaceTessData_c`/`uoTempBodyTessData_c`/`TessData`
+  fingerprint SLDPRT's cached mesh carries, and `research/d9-decode.py`'s
+  existing record-layout decoder — unmodified — recovers real triangles and
+  unit normals from it. This resolves the question tracked in
+  [issue #2](https://github.com/Wintaru/model_viewer/issues/2): SLDDRW is no
+  longer "no open path," it is an untaken one. Whether it actually joins v1
+  is a separate call — see D12.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP bounding
   box. See `DECISIONS.md`.
@@ -112,21 +127,30 @@ Narrow and concrete. Find out whether OCCT can read `COMPLEX_TRIANGULATED_FACE`
 through a different call, or whether this needs a separate reader. At minimum,
 detect the case and report it honestly.
 
-### D11 — Does SLDDRW hold a cached-view container like SLDPRT's? `[research]`
+### D12 — Does SLDDRW join v1, and what does decoding and viewing it need? `[research]`
 
-Raised while settling D6. SLDDRW is out of v1 scope per a call made in
-`research/FINDINGS.md` section 5 ("treat it as separate work"), but that call
-predates D8/D9 — it was written before anyone knew SLDPRT hides a decodable
-cached mesh behind plain deflate. SolidWorks drawings plausibly cache view
-graphics the same way, for fast redraw, and nobody has looked with the
-container-scan approach that cracked SLDPRT open.
+D11 settled the technical question: a decodable tessellation cache exists.
+This is the scope question that follows it, same shape as D2 (SolidWorks
+scope) and D6 (DXF adapter split) before it. Open sub-questions:
 
-Needs real SLDDRW sample files to scan — Josh has some. Tracked in
-[issue #2](https://github.com/Wintaru/model_viewer/issues/2). Not a blocker:
-slice 6 and D6's adapter split don't depend on the answer, and if SLDDRW does
-turn out to be feasible, its viewing needs (sheets, layers) are the same
-concepts D6's adapter and issue #1 already cover — this would add a decode
-engine, not a new viewer architecture.
+- Does `SolidWorksDecodeEngine` grow a SLDDRW mode, or does SLDDRW earn its
+  own Engine? A drawing is sheets and views over possibly several referenced
+  parts/assemblies, not one body — closer to DXF's shape than to a single
+  SLDPRT.
+- The container scan that found the cache needed one more explicit
+  raw-deflate recursion past `scan-deflate.py`'s own output-cap ceiling
+  (`research/FINDINGS.md` section 5). Confirm whether that is specific to
+  the one sample file, or a real structural difference from SLDPRT worth
+  fixing in the shared scan helper before it silently under-scans another
+  file the same way.
+- Viewing: D6's `/2d` adapter already carries orthographic camera, pan/zoom
+  and layer toggles. Sheets and multiple views per sheet are new surface on
+  top of that, not obviously a fit without checking.
+- Only one real sample file has been checked. The same "only 2018 is
+  reproducible" caveat D9's follow-ups already carry for parts may apply
+  here too.
+
+Not a blocker on anything already shipped.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 

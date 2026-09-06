@@ -17,7 +17,8 @@ All conversion runs on the client. Version 1 opens:
 | Mesh | STL, OBJ, PLY, glTF, 3MF | three.js loaders |
 | 2D drawings | DXF | Our own parser — see D6, WAYFINDER.md |
 
-Out of v1: DWG (only a GPL reader exists), SLDDRW (no open path), PMI, and
+Out of v1: DWG (only a GPL reader exists), SLDDRW (a decodable path exists
+per D11, but joining v1 is undecided — see WAYFINDER.md's D12), PMI, and
 Parasolid B-rep.
 
 ## 2. Volatility analysis
