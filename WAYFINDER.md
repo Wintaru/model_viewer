@@ -176,6 +176,15 @@ Now scoped by D0: this is the demo page that ships as the library's
 documentation, not a product surface. It should show what a caller can build,
 and stay small enough that its source reads as an example.
 
+**First real answer built 2026-09-06:** `demo/interactive-demo.html` — pick
+any file, it decodes and renders, pan/zoom/rotate, Clear and try another.
+Closes two concrete gaps the smoke demo (`library-demo.html`) had: DXF
+rotated in 3D space along with everything else (a drawing now gets its own
+non-rotating orthographic camera), and there was no way to try a file that
+wasn't a fixture baked into the page. Tree, toolbar, measurement, section
+planes, exploded views and per-face selection are all still open — this is
+"a caller can view any file," not the full designed viewer.
+
 ## Out of scope
 
 - **Autodesk Platform Services.** Ruled out by Josh before this map existed.

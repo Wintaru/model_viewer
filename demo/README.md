@@ -1,6 +1,51 @@
 # Demo
 
-Two demos live here, and they prove different things.
+Three demos live here, and they prove different things.
+
+## `interactive-demo.html` — try your own file
+
+The one meant to be used, not just read — `demo/index.html` redirects here.
+Pick any supported file (or drag it onto the page) and it decodes and
+renders in the browser: pan, zoom and (for a 3D shape) rotate, then Clear
+and try another. This is the first real answer to decision D7
+(`WAYFINDER.md`) — a designed viewer, not a smoke test, though still scoped
+by D0 to "shows what a caller can build," not a full CAD tool. Tree views,
+measurement, section planes and per-face selection are still open, tracked
+in `WAYFINDER.md`.
+
+A 3D shape (STEP, IGES, SolidWorks, mesh) gets a `PerspectiveCamera`
+auto-framed to the model's own bounding sphere, whatever scale it turns out
+to be — the smoke demo below only ever loads fixtures hand-picked to suit
+one fixed camera position, so this needed genuinely new framing logic, not
+a copy of that one. A drawing (DXF — anything whose meshes are all `topology:
+'lines'`) gets its own `OrthographicCamera` (`frameOrthographicCamera`, the
+`/2d` adapter) with rotation disabled: pan and zoom only, never rotate.
+
+Fixes a real bug the smoke demo's fixed shared camera was hiding: earlier,
+`frameOrthographicCamera` offset its frustum bounds by the drawing's own
+world-space center on top of also positioning the camera there — three.js
+treats `OrthographicCamera.left/right/top/bottom` as camera-local, not world
+coordinates (its own `updateProjectionMatrix` derives the projection center
+from `(right+left)/2` and `(top+bottom)/2`), so a nonzero pair there shifts
+the frustum off-axis a second time. None of the drawings the existing unit
+tests used were actually centred at the origin, so an origin-centred
+fixture isn't what hid this — the tests' own expected values asserted the
+exact same wrong world-space formula the buggy code computed (`camera.left`
+checked directly against `centerX - halfWidth`, say), so a self-consistent
+bug passed a self-consistent, equally wrong test. Caught only once this
+demo put a `frameOrthographicCamera` camera in front of a real
+`WebGLRenderer` for the first time, against a drawing not centred at the
+origin, and it rendered visibly skewed and cropped. Fixed in
+`src/2d/index.ts`, with `src/2d/index.test.ts` rewritten to check the
+corrected (camera-local) bounds plus world-space containment separately,
+rather than asserting one set of numbers that happened to encode both.
+
+Needs a server, for the same reason the STEP/SolidWorks/DXF halves of
+`library-demo.html` below do (constructing a `Worker` from a `file://`
+origin throws): `pnpm run serve:demo`, then
+`http://localhost:8000/interactive-demo.html`. Rebuilt by the same
+`pnpm run build:demo` as `library-demo.html`, reusing its worker bundles
+and the wasm asset — see that section below for what that script does.
 
 ## `viewer.html` — the SolidWorks decode
 

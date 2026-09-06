@@ -10,9 +10,10 @@ export default tseslint.config(
     // (build output, commit 12) are repeated here by hand. Keep the two in
     // sync.
     // demo/library-demo.bundle.js, demo/occt.worker.bundle.js,
-    // demo/solidworks.worker.bundle.js and demo/dxf.worker.bundle.js are
-    // generated (scripts/build-library-demo.mjs, commits 14, slice 2
-    // commit 7, slice 3 commit 7 and slice 6 commit 7) — bundled,
+    // demo/solidworks.worker.bundle.js, demo/dxf.worker.bundle.js and
+    // demo/interactive-demo.bundle.js are generated
+    // (scripts/build-library-demo.mjs, commits 14, slice 2 commit 7, slice
+    // 3 commit 7, slice 6 commit 7 and the interactive demo) — bundled,
     // unformatted single files, same category as demo/viewer.html and
     // dist/.
     ignores: [
@@ -24,6 +25,7 @@ export default tseslint.config(
       "demo/occt.worker.bundle.js",
       "demo/solidworks.worker.bundle.js",
       "demo/dxf.worker.bundle.js",
+      "demo/interactive-demo.bundle.js",
     ],
   },
   js.configs.recommended,

@@ -29,6 +29,21 @@ await esbuild.build({
   logOverride: { "empty-import-meta": "silent" },
 });
 
+// interactive-demo.ts: same shape, same silenced warning, same reason —
+// it constructs OcctDecodeEngineProxy directly too. Reuses every worker
+// bundle and the wasm asset the builds below already produce; needs no
+// build output of its own beyond this one file.
+await esbuild.build({
+  entryPoints: ["demo/interactive-demo.ts"],
+  outfile: "demo/interactive-demo.bundle.js",
+  bundle: true,
+  format: "iife",
+  target: "es2022",
+  minify: true,
+  logLevel: "info",
+  logOverride: { "empty-import-meta": "silent" },
+});
+
 // occt.worker.ts is loaded as a real Worker at runtime (new Worker(url)),
 // not statically imported by library-demo.bundle.js, so it needs its own
 // bundle — by hand, what a real consumer's bundler (Vite, webpack) would

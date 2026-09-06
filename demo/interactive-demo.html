@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>part-viewer — interactive demo</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #1d1f21;
+        font-family: system-ui, sans-serif;
+      }
+      #viewport {
+        position: fixed;
+        inset: 0;
+      }
+      #viewport canvas {
+        display: block;
+      }
+      #panel {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        right: 8px;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+      }
+      #drop-zone {
+        padding: 8px 14px;
+        border: 2px dashed #666;
+        border-radius: 6px;
+        color: #e8e8e8;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #drop-zone.drag-active {
+        border-color: #4da3ff;
+        color: #4da3ff;
+      }
+      #file-input {
+        display: none;
+      }
+      #clear-button {
+        padding: 8px 14px;
+        border: 1px solid #666;
+        border-radius: 6px;
+        background: transparent;
+        color: #e8e8e8;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #clear-button:hover {
+        border-color: #4da3ff;
+        color: #4da3ff;
+      }
+      #status {
+        margin: 0;
+        padding: 8px 12px;
+        max-width: 60ch;
+        font:
+          13px/1.4 ui-monospace,
+          monospace;
+        color: #e8e8e8;
+        background: rgba(0, 0, 0, 0.55);
+        border-radius: 4px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="viewport"></div>
+    <div id="panel">
+      <label id="drop-zone" for="file-input">
+        Drop a file here, or click to choose one (STEP, IGES, SLDPRT, SLDASM,
+        STL, DXF)
+      </label>
+      <input id="file-input" type="file" />
+      <button id="clear-button" type="button">Clear</button>
+      <pre id="status">Loading…</pre>
+    </div>
+    <script src="interactive-demo.bundle.js"></script>
+  </body>
+</html>
