@@ -1,3 +1,4 @@
+export type { ModelCacheAccessor } from "./accessor/ModelCacheAccessor";
 export type { ModelSource } from "./accessor/ModelSource";
 export { fromBuffer } from "./accessor/BufferSourceAccessor";
 export { fromFile } from "./accessor/FileSourceAccessor";
