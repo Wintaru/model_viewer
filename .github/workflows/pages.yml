@@ -1,0 +1,44 @@
+name: Deploy demo to GitHub Pages
+
+# Publishes demo/ as-is: it is already fully self-contained and committed
+# (bundled JS, the OCCT wasm asset, sample fixtures — see demo/README.md),
+# so this workflow needs no build step of its own, just an upload.
+#
+# Inactive until this repository's Pages source (Settings -> Pages ->
+# Build and deployment -> Source) is set to "GitHub Actions" — a manual,
+# one-time step, deliberately left undone here.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deployment should ever run at a time; a newer push should
+# not be canceled by an in-flight older one finishing after it.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload demo/ as the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./demo
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
