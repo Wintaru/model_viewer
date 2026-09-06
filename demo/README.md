@@ -29,7 +29,7 @@ Slice 1 commit 14's smoke demo, extended in slice 2 commit 7: proves
 under Vitest. This is deliberately not the designed viewer: the actual UI
 is decision D7, still open in `WAYFINDER.md`.
 
-It proves three things, with two different delivery requirements:
+It proves four things, with two different delivery requirements:
 
 - **The STL cube** — a small hand-built binary STL, no test corpus needed.
   Open `library-demo.html` directly for the same reason `viewer.html` needs
@@ -72,6 +72,16 @@ It proves three things, with two different delivery requirements:
   ```
 
   then open `http://localhost:8000/library-demo.html`.
+- **Export and cache** (slice 5) — the STL cube is loaded twice through an
+  in-memory `ModelCacheAccessor`, timing both loads: the second is a cache
+  hit, so `MeshDecodeEngine` never runs again on identical bytes (confirmed
+  by hand: one observed run measured 5.2ms for the first load and 0.0ms
+  for the cached reload, in a real Chromium — the exact numbers will vary
+  run to run). The cube is then exported through `ModelExporter` and
+  offered as a real `smoke-cube.gltf` download link — confirmed by hand to
+  be valid glTF 2.0 JSON with the expected mesh and accessor counts. Both
+  need only the cube, so unlike the STEP and SolidWorks halves above, this
+  works over `file://` too.
 
 Rebuild everything with:
 

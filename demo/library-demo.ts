@@ -26,6 +26,12 @@
  *   half. This is the same NIST part `viewer.html`'s Python-path proof
  *   already decodes — see demo/README.md's "the working case" screenshot —
  *   so a known-good bounding box exists to sanity-check against by eye.
+ * - The cube is loaded twice through an `InMemoryModelCache` (slice 5),
+ *   timing both loads: the second is a cache hit, so `MeshDecodeEngine`
+ *   never runs a second time on identical bytes. Then the cube is exported
+ *   through `ModelExporter` and offered as a `smoke-cube.gltf` download —
+ *   both need only the cube, so unlike the STEP and SolidWorks halves,
+ *   this works over `file://` too.
  *
  * Bundled to library-demo.bundle.js by scripts/build-library-demo.mjs into a
  * classic, non-module script — a `<script type="module">` fails to load
@@ -48,8 +54,11 @@ import {
 import {
   fromBuffer,
   fromUrl,
+  ModelExporter,
   ModelLoader,
   ModuleRegistry,
+  type DecodedModel,
+  type ModelCacheAccessor,
   type SolidWorksDecoder,
   type StepDecoder,
 } from "../src/index";
@@ -329,17 +338,71 @@ async function loadSolidWorksPart(
   }
 }
 
+/**
+ * A trivial in-memory `ModelCacheAccessor` (SPEC.md section 10 slice 5). A
+ * real host would back this with IndexedDB or disk; this demo only needs
+ * to prove the check-cache/decode/store contract actually works, not to
+ * persist anything across page loads.
+ */
+class InMemoryModelCache implements ModelCacheAccessor {
+  private readonly entries = new Map<string, DecodedModel>();
+
+  load(key: string): Promise<DecodedModel | undefined> {
+    return Promise.resolve(this.entries.get(key));
+  }
+
+  store(key: string, model: DecodedModel): Promise<void> {
+    this.entries.set(key, model);
+    return Promise.resolve();
+  }
+}
+
+/**
+ * Exports `model` through `ModelExporter` (slice 5) and offers the result
+ * as a real download link, proving the export path in a browser rather
+ * than only under Vitest. Styled inline rather than in
+ * `library-demo.html`'s `<style>` block, to keep this one self-contained
+ * addition in one file.
+ */
+async function offerGltfDownload(
+  model: DecodedModel,
+  filename: string,
+): Promise<void> {
+  const exporter = new ModelExporter();
+  const blob = await exporter.export(model, { format: "gltf" });
+  // Not revoked: the link must stay valid for the life of the page, which
+  // never re-creates it, so there's no later point at which revoking it
+  // would be safe rather than just breaking a still-visible link.
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.textContent = `Download ${filename}`;
+  link.style.cssText =
+    "position:fixed;bottom:8px;left:8px;padding:8px 12px;" +
+    "font:13px/1.4 ui-monospace,monospace;color:#e8e8e8;" +
+    "background:rgba(0,0,0,0.55);border-radius:4px;text-decoration:none;";
+  document.body.appendChild(link);
+}
+
 async function main(): Promise<void> {
   const status = statusElement();
 
+  const cache = new InMemoryModelCache();
   const loader = new ModelLoader(
     undefined,
     undefined,
     createStepDecoders(),
     createSolidWorksDecoders(),
+    cache,
   );
-  const stl = fromBuffer(binaryStl(CUBE_TRIANGLES), "smoke-cube.stl");
-  const model = await loader.load(stl);
+
+  const firstLoadStart = performance.now();
+  const model = await loader.load(
+    fromBuffer(binaryStl(CUBE_TRIANGLES), "smoke-cube.stl"),
+  );
+  const firstLoadMs = performance.now() - firstLoadStart;
 
   if (model.diagnostics.some((d) => d.severity === "error")) {
     status.textContent = model.diagnostics
@@ -347,7 +410,21 @@ async function main(): Promise<void> {
       .join("\n");
     return;
   }
-  status.textContent = `STL: loaded ${model.meshes.length} mesh(es), ${model.tree.length} scene node(s).`;
+
+  // Same triangles, freshly re-encoded to bytes — a new Uint8Array each
+  // time, not the same object reused — so a cache hit here proves the key
+  // is derived from content, not object identity. MeshDecodeEngine never
+  // runs a second time on this content (ModelLoadManager.ts's
+  // decodeWithCache).
+  const secondLoadStart = performance.now();
+  await loader.load(fromBuffer(binaryStl(CUBE_TRIANGLES), "smoke-cube.stl"));
+  const secondLoadMs = performance.now() - secondLoadStart;
+
+  status.textContent =
+    `STL: loaded ${model.meshes.length} mesh(es), ${model.tree.length} scene node(s). ` +
+    `First load ${firstLoadMs.toFixed(1)}ms, cached reload ${secondLoadMs.toFixed(1)}ms.`;
+
+  await offerGltfDownload(model, "smoke-cube.gltf");
 
   const scene = new Scene();
   const spinning = new Group();
