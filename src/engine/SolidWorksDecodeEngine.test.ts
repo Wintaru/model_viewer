@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   decodeTessDataStream,
   extractTessDataStreams,
+  SolidWorksDecodeEngine,
 } from "./SolidWorksDecodeEngine";
 
 const SOLIDWORKS_DIR = "assets/solidworks";
@@ -205,6 +206,169 @@ describe("decodeTessDataStream", () => {
 
       expect(mesh.positions).toHaveLength(3_396 * 3);
       expect(mesh.indices).toHaveLength(2_296 * 3);
+    },
+    REAL_FILE_TIMEOUT_MS,
+  );
+});
+
+/** Independently re-derives the strip-triangulation rule (ARCHITECTURE.md
+ * section 6) from its spec, rather than reusing assembleMesh's own code, so
+ * this actually cross-checks production behavior instead of restating it. */
+function expectedStripIndices(stripSizes: readonly number[]): number[] {
+  const indices: number[] = [];
+  let base = 0;
+  for (const size of stripSizes) {
+    for (let k = 0; k < size - 2; k++) {
+      if (k % 2 === 0) {
+        indices.push(base + k, base + k + 1, base + k + 2);
+      } else {
+        indices.push(base + k + 1, base + k, base + k + 2);
+      }
+    }
+    base += size;
+  }
+  return indices;
+}
+
+/** Per-axis extents (max - min), the same shape research/d9-verify-cached.py
+ * compares against d8-truth.json's independently STEP-measured boxes.
+ * Streams rather than indexes into `positions`, same reason
+ * normalsLookValid does in the production code. */
+function extents(positions: Float32Array): readonly [number, number, number] {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  let component = 0;
+  let x = 0;
+  let y = 0;
+  for (const value of positions) {
+    if (component === 0) {
+      x = value;
+    } else if (component === 1) {
+      y = value;
+    } else {
+      const z = value;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      minZ = Math.min(minZ, z);
+      maxZ = Math.max(maxZ, z);
+    }
+    component = (component + 1) % 3;
+  }
+  return [maxX - minX, maxY - minY, maxZ - minZ];
+}
+
+/** Same 2%-or-0.5mm tolerance research/d9-verify-cached.py uses to compare
+ * against independently STEP-measured boxes. */
+function expectWithinTolerance(got: number, want: number): void {
+  expect(Math.abs(got - want)).toBeLessThanOrEqual(Math.max(0.5, 0.02 * want));
+}
+
+describe("SolidWorksDecodeEngine", () => {
+  it("reports no-tessdata-found for a file with no compressed stream at all", () => {
+    const engine = new SolidWorksDecodeEngine();
+    // No valid zlib or raw-deflate stream anywhere in here, so
+    // tryInflateAt never succeeds at any offset — MIN_ACCEPTED_OUTPUT_BYTES
+    // never even comes into play, since that only gates a *successful*
+    // inflate's output length, not the raw input.
+    const plainBytes = new TextEncoder().encode(
+      "not a SolidWorks file, no deflate stream anywhere in here",
+    );
+
+    const model = engine.transform(plainBytes);
+
+    expect(model.meshes).toEqual([]);
+    expect(model.diagnostics).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        code: "no-tessdata-found",
+      }),
+    );
+  });
+
+  it("reports tessdata-decode-failed when a stream is found but no tessellation block decodes from it", () => {
+    // A real TessData stream (extractTessDataStreams will find and keep
+    // it), but with no "4, 8, 2" header anywhere inside — so
+    // decodeTessDataStream finds nothing to build a mesh from.
+    const fileBytes = deflate(tessDataPayload(1_000));
+
+    const model = new SolidWorksDecodeEngine().transform(fileBytes);
+
+    expect(model.meshes).toEqual([]);
+    expect(model.diagnostics).toContainEqual(
+      expect.objectContaining({
+        severity: "error",
+        code: "tessdata-decode-failed",
+      }),
+    );
+  });
+
+  it("decodes a synthetic file end to end, converting metres to millimetres", () => {
+    const stripSizes = [10, 10];
+    const vertexCount = 20;
+    // Small metre-scale values, matching FINDINGS.md section 5's claim that
+    // SolidWorks tessellation coordinates are metres, not millimetres.
+    const positionsMetres = Array.from(
+      { length: vertexCount * 3 },
+      (_, i) => i * 0.001,
+    );
+    const normals = unitNormals(vertexCount);
+    const block = buildTessellationBlock(stripSizes, positionsMetres, normals);
+    const withMagic = new Uint8Array(TESS_DATA_MAGIC.length + block.length);
+    withMagic.set(new TextEncoder().encode(TESS_DATA_MAGIC), 0);
+    withMagic.set(block, TESS_DATA_MAGIC.length);
+    const fileBytes = deflate(withMagic);
+
+    const model = new SolidWorksDecodeEngine().transform(fileBytes);
+
+    expect(model.units).toBe("mm");
+    expect(model.diagnostics).toEqual([]);
+    expect(model.meshes).toHaveLength(1);
+    const mesh = model.meshes[0];
+    if (mesh === undefined) {
+      throw new Error("expected transform() to return one mesh");
+    }
+
+    // float32 round-trips twice — once writing the synthetic fixture,
+    // once through the *1000 conversion — so both roundings are replayed
+    // here rather than comparing against full double precision.
+    expect(Array.from(mesh.positions)).toEqual(
+      positionsMetres.map((v) => Math.fround(Math.fround(v) * 1000)),
+    );
+    expect(Array.from(mesh.normals)).toEqual(normals);
+    expect(Array.from(mesh.indices)).toEqual(expectedStripIndices(stripSizes));
+    expect(mesh.faces).toEqual([]);
+    expect(model.tree).toEqual([{ meshIndices: [0], children: [] }]);
+  });
+
+  it(
+    "reproduces the STEP-measured bounding box for a real NIST part, matching the already-committed demo/nist-ctc-01.json",
+    () => {
+      const model = new SolidWorksDecodeEngine().transform(
+        readSldprt("nist_ctc_01_asme1_rd_sw1802.SLDPRT"),
+      );
+
+      expect(model.diagnostics).toEqual([]);
+      expect(model.meshes).toHaveLength(1);
+      const mesh = model.meshes[0];
+      if (mesh === undefined) {
+        throw new Error("expected transform() to return one mesh");
+      }
+      expect(mesh.positions).toHaveLength(3_396 * 3);
+      expect(mesh.indices).toHaveLength(2_296 * 3);
+
+      // demo/nist-ctc-01.json (already committed — generated by
+      // research/d9-decode.py) records this exact box: bboxMm [800.0,
+      // 450.0, 150.0].
+      const [gotX, gotY, gotZ] = extents(mesh.positions);
+      expectWithinTolerance(gotX, 800.0);
+      expectWithinTolerance(gotY, 450.0);
+      expectWithinTolerance(gotZ, 150.0);
     },
     REAL_FILE_TIMEOUT_MS,
   );

@@ -1,3 +1,8 @@
+import type { DecodedMesh } from "../common/DecodedMesh";
+import {
+  createEmptyDecodedModel,
+  type DecodedModel,
+} from "../common/DecodedModel";
 import { tryInflateRaw, tryInflateZlib } from "../utility/InflateUtil";
 
 const TESS_DATA_MAGIC = "TessData";
@@ -591,4 +596,104 @@ function readU32(view: DataView, byteOffset: number): number {
 
 function readF32(view: DataView, byteOffset: number): number {
   return view.getFloat32(byteOffset, true);
+}
+
+// --- Assembly: transform() -------------------------------------------------
+//
+// Wires extractTessDataStreams and decodeTessDataStream together into the
+// public Engine surface, ARCHITECTURE.md section 6. SolidWorks itself works
+// in metres (FINDINGS.md section 5); DecodedModel.units is always 'mm', so
+// positions are scaled on the way out — normals are directions, not
+// distances, and stay as-is.
+
+const METRES_TO_MILLIMETRES = 1000;
+
+/**
+ * Bytes to a {@link DecodedModel} for a SolidWorks part (SLDPRT). No wasm,
+ * no Accessor, nothing to await — unlike `OcctDecodeEngine`, `transform` is
+ * synchronous, the same shape `MeshDecodeEngine` already uses for the same
+ * reason.
+ *
+ * `extractTessDataStreams` and `decodeTessDataStream` above stay exported in
+ * their own right rather than becoming private helpers once this class
+ * wraps them — unlike, say, `OcctDecodeEngine`'s small mapping functions,
+ * each is a substantial, independently-verified port of one whole function
+ * from `research/d9-decode.py`, with its own dedicated tests that would
+ * otherwise lose precision (a failure would only say "transform() is wrong
+ * somewhere," not which stage). See DECISIONS.md.
+ *
+ * SLDASM (assemblies) are untested — WAYFINDER.md's D9 follow-up — so this
+ * is scoped to parts, matching SPEC.md section 10's own slice-3 ordering.
+ */
+export class SolidWorksDecodeEngine {
+  transform(bytes: Uint8Array): DecodedModel {
+    const streams = extractTessDataStreams(bytes);
+    if (streams.length === 0) {
+      return createEmptyDecodedModel({
+        severity: "error",
+        code: "no-tessdata-found",
+        message:
+          "No SolidWorks tessellation cache found in this file — this may be an older (pre-2014) container generation, which this version doesn't support. See ARCHITECTURE.md section 6.",
+      });
+    }
+
+    const combined = combineTessDataStreams(streams);
+    if (combined.indices.length === 0) {
+      // Measured to matter: REVIEW-BACKLOG.md's D9 follow-ups note real
+      // NIST parts exist where the cache holds only PMI annotation geometry
+      // or otherwise fails to decode a usable block — this must say so,
+      // not return an empty model claiming success (ARCHITECTURE.md
+      // section 7's own reasoning for OcctDecodeEngine's diagnostics).
+      return createEmptyDecodedModel({
+        severity: "error",
+        code: "tessdata-decode-failed",
+        message:
+          "Found a SolidWorks tessellation stream, but no valid tessellation block decoded from it.",
+      });
+    }
+
+    const mesh: DecodedMesh = {
+      positions: combined.positions.map((v) => v * METRES_TO_MILLIMETRES),
+      normals: combined.normals,
+      indices: combined.indices,
+      // No CAD face identity: the tessellation cache is a flat list of
+      // triangle strips with no per-face structure recovered, unlike
+      // OCCT's brep_faces — SPEC.md section 6.
+      faces: [],
+    };
+
+    return {
+      units: "mm",
+      meshes: [mesh],
+      tree: [{ meshIndices: [0], children: [] }],
+      metadata: {},
+      diagnostics: [],
+    };
+  }
+}
+
+/**
+ * Decodes every stream and concatenates the results into one mesh, matching
+ * `research/d9-decode.py`'s own driver (`V, N, T = [], [], []; for blob in
+ * uniq: ...`) — real NIST parts have exactly one TessData stream each
+ * (verified in this port's own tests), but the algorithm doesn't assume
+ * that.
+ */
+function combineTessDataStreams(
+  streams: readonly Uint8Array[],
+): SolidWorksMesh {
+  const meshes = streams.map(decodeTessDataStream);
+  const indices: number[] = [];
+  let vertexBase = 0;
+  for (const mesh of meshes) {
+    for (const index of mesh.indices) {
+      indices.push(vertexBase + index);
+    }
+    vertexBase += mesh.positions.length / FLOATS_PER_VERTEX;
+  }
+  return {
+    positions: concatFloat32(meshes.map((mesh) => mesh.positions)),
+    normals: concatFloat32(meshes.map((mesh) => mesh.normals)),
+    indices: Uint32Array.from(indices),
+  };
 }
