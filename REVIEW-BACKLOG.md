@@ -6,6 +6,13 @@ they are not rediscovered.
 
 Nothing here blocks build slice 1.
 
+**As of 2026-09-06, new deferred work is filed as a GitHub issue, not added
+here.** The repository gained a remote after this file was started, so
+tracking has a proper home now. Entries below stay as the historical record of
+what the initial review found; find current deferred work at
+`https://github.com/Wintaru/model_viewer/issues` (labels `deferred` and
+`research`).
+
 ## Applies to the research scripts
 
 These scripts are kept as an audit trail of how the SolidWorks format was
