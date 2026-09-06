@@ -15,6 +15,7 @@ export { fromUrl, type UrlSourceInit } from "./accessor/UrlSourceAccessor";
  */
 export { ModelLoadManager as ModelLoader } from "./manager/ModelLoadManager";
 export type {
+  DxfDecoder,
   ModelInput,
   SolidWorksDecoder,
   StepDecoder,
