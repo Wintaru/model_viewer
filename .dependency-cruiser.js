@@ -112,6 +112,14 @@ export default {
       from: { path: "^src/three/" },
       to: { path: "^src/(manager|engine|accessor|utility)/" },
     },
+    {
+      name: "no-2d-adapter-outbound",
+      comment:
+        "Same rule as no-three-adapter-outbound, for the /2d adapter (D6, WAYFINDER.md): a pure consumer of Common's neutral model, not a layer in the loading pipeline.",
+      severity: "error",
+      from: { path: "^src/2d/" },
+      to: { path: "^src/(manager|engine|accessor|utility)/" },
+    },
   ],
   options: {
     // Test files aren't part of the runtime layer graph the rules above

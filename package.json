@@ -18,6 +18,10 @@
     "./three": {
       "types": "./dist/three/index.d.ts",
       "default": "./dist/three/index.js"
+    },
+    "./2d": {
+      "types": "./dist/2d/index.d.ts",
+      "default": "./dist/2d/index.js"
     }
   },
   "files": [
