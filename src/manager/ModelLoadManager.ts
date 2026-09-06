@@ -50,6 +50,17 @@ export interface StepDecoder {
 export type StepDecoderConfig = string | ModuleRegistry<"step", StepDecoder>;
 
 /**
+ * What `ModuleRegistry`'s `"solidworks"` loader must resolve to. Same shape
+ * as `StepDecoder` — matches `SolidWorksDecodeEngineProxy`'s own
+ * `transform`, declared independently for the same reason: a fake decoder
+ * in a test, or a caller building their own registry, needs no import of
+ * the real proxy (and the `Worker` it would construct).
+ */
+export interface SolidWorksDecoder {
+  transform(bytes: Uint8Array): Promise<DecodedModel>;
+}
+
+/**
  * The whole public surface for loading, per SPEC.md section 3: ask an
  * Accessor for bytes, ask the sniffer Engine what the format is, resolve
  * the decoder for that format, run it.
@@ -68,6 +79,14 @@ export class ModelLoadManager {
     private readonly sniffer: FormatSniffEngine = new FormatSniffEngine(),
     private readonly meshDecoder: MeshDecodeEngine = new MeshDecodeEngine(),
     stepDecoders?: StepDecoderConfig,
+    // Unlike `stepDecoders`, this has a real default: SolidWorksDecodeEngine
+    // needs no wasm asset or other per-instance configuration, so there's
+    // nothing a real caller would ever need to supply — only a test
+    // overrides this, to inject a fake decoder.
+    private readonly solidWorksDecoders: ModuleRegistry<
+      "solidworks",
+      SolidWorksDecoder
+    > = createSolidWorksDecoders(),
   ) {
     this.stepDecoders =
       typeof stepDecoders === "string"
@@ -101,6 +120,14 @@ export class ModelLoadManager {
       const decoder = await this.stepDecoders.get("step");
       return decoder.transform(bytes);
     }
+    if (format === "solidworks") {
+      // No "not configured" branch, unlike `step` above: `solidWorksDecoders`
+      // always has a real default, so this is never unusable for a real
+      // caller. Same reasoning as `step`'s comment for why a rejected
+      // `get` is left uncaught here.
+      const decoder = await this.solidWorksDecoders.get("solidworks");
+      return decoder.transform(bytes);
+    }
     if (format === undefined) {
       return createEmptyDecodedModel({
         severity: "error",
@@ -130,6 +157,23 @@ function createOcctStepDecoders(
     step: () =>
       import("../engine/OcctDecodeEngineProxy").then(
         (module) => new module.OcctDecodeEngineProxy(occtWasmUrl),
+      ),
+  });
+}
+
+/**
+ * Builds the real, lazy `'solidworks'` decoder registry — same D10 lazy
+ * format registry as `createOcctStepDecoders`, but with no URL to accept:
+ * `SolidWorksDecodeEngineProxy` takes no configuration at all.
+ */
+function createSolidWorksDecoders(): ModuleRegistry<
+  "solidworks",
+  SolidWorksDecoder
+> {
+  return new ModuleRegistry({
+    solidworks: () =>
+      import("../engine/SolidWorksDecodeEngineProxy").then(
+        (module) => new module.SolidWorksDecodeEngineProxy(),
       ),
   });
 }

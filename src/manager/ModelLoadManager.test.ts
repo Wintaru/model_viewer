@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { fromBuffer } from "../accessor/BufferSourceAccessor";
 import { ModuleRegistry } from "../utility/ModuleRegistry";
-import { ModelLoadManager, type StepDecoder } from "./ModelLoadManager";
+import {
+  ModelLoadManager,
+  type SolidWorksDecoder,
+  type StepDecoder,
+} from "./ModelLoadManager";
 
 interface Triangle {
   readonly normal: readonly [number, number, number];
@@ -52,6 +56,11 @@ const oneTriangle: Triangle = {
 
 function ascii(text: string): Uint8Array {
   return Uint8Array.from(text, (char) => char.charCodeAt(0));
+}
+
+/** FormatSniffEngine's SolidWorks signature: bytes 4-7 are 00 00 00 04. */
+function solidWorksBytes(): Uint8Array {
+  return new Uint8Array([0xaa, 0xaa, 0xaa, 0xaa, 0x00, 0x00, 0x00, 0x04]);
 }
 
 describe("ModelLoadManager", () => {
@@ -166,6 +175,62 @@ describe("ModelLoadManager", () => {
     await expect(
       manager.load(ascii("ISO-10303-21;\nHEADER;\n")),
     ).rejects.toThrow("chunk fetch failed");
+  });
+
+  it("dispatches a SolidWorks file to a configured decoder", async () => {
+    let receivedBytes: Uint8Array | undefined;
+    const fakeDecoder: SolidWorksDecoder = {
+      transform: (bytes) => {
+        receivedBytes = bytes;
+        return Promise.resolve({
+          units: "mm",
+          meshes: [],
+          tree: [],
+          metadata: { source: "fake-solidworks" },
+          diagnostics: [],
+        });
+      },
+    };
+    const solidWorksDecoders = new ModuleRegistry<
+      "solidworks",
+      SolidWorksDecoder
+    >({
+      solidworks: () => Promise.resolve(fakeDecoder),
+    });
+    // No "not configured" case to test here, unlike step: solidWorksDecoders
+    // always has a real default, so the only thing worth injecting is a
+    // fake decoder, in the fourth constructor slot.
+    const manager = new ModelLoadManager(
+      undefined,
+      undefined,
+      undefined,
+      solidWorksDecoders,
+    );
+    const bytes = solidWorksBytes();
+
+    const model = await manager.load(bytes);
+
+    expect(model.metadata).toEqual({ source: "fake-solidworks" });
+    expect(receivedBytes).toEqual(bytes);
+  });
+
+  it("rejects when the configured solidworks decoder fails to resolve", async () => {
+    const solidWorksDecoders = new ModuleRegistry<
+      "solidworks",
+      SolidWorksDecoder
+    >({
+      solidworks: () => Promise.reject(new Error("chunk fetch failed")),
+    });
+    const manager = new ModelLoadManager(
+      undefined,
+      undefined,
+      undefined,
+      solidWorksDecoders,
+    );
+
+    await expect(manager.load(solidWorksBytes())).rejects.toThrow(
+      "chunk fetch failed",
+    );
   });
 
   it("reports unrecognized-format for bytes matching no known format", async () => {
