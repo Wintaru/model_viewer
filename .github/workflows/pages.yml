@@ -4,9 +4,12 @@ name: Deploy demo to GitHub Pages
 # (bundled JS, the OCCT wasm asset, sample fixtures — see demo/README.md),
 # so this workflow needs no build step of its own, just an upload.
 #
-# Inactive until this repository's Pages source (Settings -> Pages ->
-# Build and deployment -> Source) is set to "GitHub Actions" — a manual,
-# one-time step, deliberately left undone here.
+# Live at https://wintaru.github.io/model_viewer/.
+#
+# This needs the repository's Pages source (Settings -> Pages -> Build and
+# deployment -> Source) set to "GitHub Actions". That is a repository setting
+# rather than a file, so no commit here can turn it on or off. It is on, and
+# every push to main has deployed since.
 
 on:
   push:
