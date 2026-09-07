@@ -333,6 +333,17 @@ Now scoped by D0: this is the demo page that ships as the library's
 documentation, not a product surface. It should show what a caller can build,
 and stay small enough that its source reads as an example.
 
+- **Render-mode toggle: solid / wireframe / points, 2026-09-06 19:15.**
+  Existed in the earlier Python-built proof of concept (`demo/viewer.html`);
+  missing from the current TypeScript `interactive-demo.html`. Josh asked
+  for it back while debugging a real SolidWorks decode artifact (a
+  malformed face on `customer part A`, DECISIONS.md) — wireframe
+  would have shown the triangle-strip structure directly instead of
+  needing a temporary per-strip color-coding patch to see it. Not built
+  yet, deliberately (Josh: "don't build it, just add it to our TODO
+  list") — logged here since it's squarely a D7 viewer-feel question, not
+  a separate decision.
+
 **First real answer built 2026-09-06:** `demo/interactive-demo.html` — pick
 any file, it decodes and renders, pan/zoom/rotate, Clear and try another.
 Closes two concrete gaps the smoke demo (`library-demo.html`) had: DXF
