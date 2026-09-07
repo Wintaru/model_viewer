@@ -10,6 +10,26 @@ interface Posted {
   readonly transfer: readonly Transferable[];
 }
 
+/**
+ * A stand-in for the event a real Worker passes to `onerror`.
+ *
+ * `ErrorEvent` is a global in a browser and in Node 26, but not in Node 24,
+ * which `package.json`'s `engines` supports. Calling the constructor threw
+ * `ReferenceError: ErrorEvent is not defined` there. It went unnoticed
+ * because it fails on no developer machine running Node 26 — CI found it on
+ * the first run across the whole supported range.
+ *
+ * `WorkerTransport` reads only `.message` from this event
+ * (`worker.onerror = (event) => this.fail(new Error(event.message))`), so a
+ * plain object exercises exactly the same path with no constructor to be
+ * missing. The assertion is the narrow, honest kind: the DOM type describes
+ * far more than either the transport or this double needs, and only the test
+ * knows that the extra members are never touched.
+ */
+function errorEvent(message: string): ErrorEvent {
+  return { message } as unknown as ErrorEvent;
+}
+
 class FakeWorker implements WorkerLike {
   onmessage: ((event: MessageEvent) => void) | null = null;
   onerror: ((event: ErrorEvent) => void) | null = null;
@@ -25,7 +45,7 @@ class FakeWorker implements WorkerLike {
   }
 
   crash(message: string): void {
-    this.onerror?.(new ErrorEvent("error", { message }));
+    this.onerror?.(errorEvent(message));
   }
 
   corrupt(): void {
