@@ -269,6 +269,33 @@ scope by absence of a decision, not by absence of a path. See D12.
   out to be something else entirely — see DECISIONS.md for why it's most
   likely real, intentional geometry (a chamfer/relief cut the actual
   drawing confirms belongs there), not a defect.
+- **D17 — Every decoded block's first strip-vertex had a zero-length
+  normal, rendering as patchy wrong shading, not dim lighting,
+  2026-09-07.** Josh pushed back on D16's claim that a remaining odd-looking
+  region was "just lighting" — correctly: a *different* set of faces (edge
+  bevels and chamfer strips, not the region D16 checked) really were wrong,
+  not dim. Colour-coded each decoded block (a temporary debug patch,
+  reverted) to match Josh's own screenshots to specific blocks, then
+  measured those blocks directly rather than guessing again: every one of
+  34 blocks in a real customer part had its first strip's first vertex (occasionally
+  the second too) stored with a normal of exactly `(0,0,0)` — 49 of 392
+  vertices total. A zero vector still shades under WebGL's Lambertian
+  lighting (the dot product is just 0, not an error), so it renders as if
+  lit by ambient light alone — patchy against the correctly-lit vertices
+  right next to it on the same triangle. Reads as a leading anchor point in
+  the cache's own strip format that never carried a real per-vertex
+  normal, not corrupted SolidWorks data.
+
+  Fixed in `SolidWorksDecodeEngine.ts`'s `assembleMesh`: any vertex whose
+  stored normal is zero-length gets a real one recomputed from its own
+  already-decoded triangle geometry (a face-normal average, the same
+  technique mesh-processing tools use generally) — never inventing a
+  position, only deriving a direction the position data already implies.
+  Verified on the real file: 49/392 zero-length normals before, 0/392
+  after, and the previously patchy bevel/chamfer edges render with smooth,
+  consistent shading. Whole NIST corpus: vertex/triangle counts and the
+  STEP-bounding-box check are both unaffected (this only changes normal
+  *values*, never positions or topology), so nothing regressed.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP
   bounding box. **Updated 2026-09-07 — see D16, above: now 7 of 11**, after

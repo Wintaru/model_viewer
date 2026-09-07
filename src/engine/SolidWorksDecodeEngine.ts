@@ -191,11 +191,148 @@ function assembleMesh(kept: readonly TessellationBlock[]): SolidWorksMesh {
     vertexBase += block.positions.length / FLOATS_PER_VERTEX;
   }
 
+  const positions = concatFloat32(positionParts);
+  const normals = concatFloat32(normalParts);
+  const indexArray = Uint32Array.from(indices);
+  repairZeroLengthNormals(positions, normals, indexArray);
+
   return {
-    positions: concatFloat32(positionParts),
-    normals: concatFloat32(normalParts),
-    indices: Uint32Array.from(indices),
+    positions,
+    normals,
+    indices: indexArray,
   };
+}
+
+/**
+ * SolidWorks's own cached tessellation always leaves the *first* vertex of
+ * each block's first strip with a stored normal of exactly (0,0,0) —
+ * measured across a real customer part, not assumed (DECISIONS.md): 49 of
+ * 392 vertices, always at strip-local offset 0 (occasionally offset 1
+ * too), never anywhere else, across every one of 34 blocks. It reads like
+ * a leading anchor/reference point in the cache's own strip format that
+ * never carried a real per-vertex normal, not corruption.
+ *
+ * A zero vector still shades: a Lambertian dot-product against it is 0
+ * regardless of light direction, so it neither errors nor gets clipped —
+ * it silently contributes no diffuse light, rendering as if lit by ambient
+ * alone, patchy against the correctly-lit vertices right next to it on the
+ * same triangle (this is what actually produced the "wrong colour, not
+ * just dim" faces reported in DECISIONS.md, not lighting or a missing
+ * face). This recomputes a real normal for any such vertex from its own
+ * already-decoded triangle geometry — never inventing a position, only
+ * deriving a direction the position data already implies.
+ *
+ * Deliberately broader than the one observed pattern above: this repairs
+ * *any* zero-length normal found anywhere in the mesh, not just a strip's
+ * first or second vertex. A real unit-ish normal is never exactly zero, so
+ * checking the invariant directly is safer than hard-coding the specific
+ * strip position this was first found at.
+ */
+function repairZeroLengthNormals(
+  positions: Float32Array,
+  normals: Float32Array,
+  indices: Uint32Array,
+): void {
+  const vertexCount = positions.length / FLOATS_PER_VERTEX;
+  const needsRepair = new Uint8Array(vertexCount);
+  let anyNeedsRepair = false;
+  for (let v = 0; v < vertexCount; v++) {
+    if (vectorLength(normals, v) < MIN_NORMAL_LENGTH) {
+      needsRepair[v] = 1;
+      anyNeedsRepair = true;
+    }
+  }
+  if (!anyNeedsRepair) {
+    return;
+  }
+
+  // Sums a face normal per vertex that needs one, from every triangle that
+  // actually touches it — not just the one triangle the strip-position
+  // pattern above would predict, in case a vertex is legitimately shared
+  // by more than one (unlikely here, but cheap to get right in general).
+  const sumX = new Float64Array(vertexCount);
+  const sumY = new Float64Array(vertexCount);
+  const sumZ = new Float64Array(vertexCount);
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    const a = indices[t] ?? 0;
+    const b = indices[t + 1] ?? 0;
+    const c = indices[t + 2] ?? 0;
+    if (needsRepair[a] !== 1 && needsRepair[b] !== 1 && needsRepair[c] !== 1) {
+      continue;
+    }
+    const face = triangleNormal(positions, a, b, c);
+    if (face === undefined) {
+      continue;
+    }
+    for (const vertex of [a, b, c]) {
+      if (needsRepair[vertex] !== 1) {
+        continue;
+      }
+      sumX[vertex] = (sumX[vertex] ?? 0) + face[0];
+      sumY[vertex] = (sumY[vertex] ?? 0) + face[1];
+      sumZ[vertex] = (sumZ[vertex] ?? 0) + face[2];
+    }
+  }
+
+  for (let v = 0; v < vertexCount; v++) {
+    if (needsRepair[v] !== 1) {
+      continue;
+    }
+    const x = sumX[v] ?? 0;
+    const y = sumY[v] ?? 0;
+    const z = sumZ[v] ?? 0;
+    const length = Math.sqrt(x * x + y * y + z * z);
+    if (length < MIN_NORMAL_LENGTH) {
+      continue; // No non-degenerate triangle touches this vertex; leave it.
+    }
+    normals[v * 3] = x / length;
+    normals[v * 3 + 1] = y / length;
+    normals[v * 3 + 2] = z / length;
+  }
+}
+
+function vectorLength(components: Float32Array, index: number): number {
+  const x = components[index * 3] ?? 0;
+  const y = components[index * 3 + 1] ?? 0;
+  const z = components[index * 3 + 2] ?? 0;
+  return Math.sqrt(x * x + y * y + z * z);
+}
+
+/**
+ * The real, outward-consistent face normal for one triangle, using its
+ * vertices in exactly the order `indices` already stores them — that order
+ * already encodes the correct winding (validated throughout this file's
+ * own tests), so no separate sign correction is needed here, unlike a
+ * boundary fan built from scratch.
+ */
+function triangleNormal(
+  positions: Float32Array,
+  a: number,
+  b: number,
+  c: number,
+): readonly [number, number, number] | undefined {
+  const ax = positions[a * 3] ?? 0;
+  const ay = positions[a * 3 + 1] ?? 0;
+  const az = positions[a * 3 + 2] ?? 0;
+  const bx = positions[b * 3] ?? 0;
+  const by = positions[b * 3 + 1] ?? 0;
+  const bz = positions[b * 3 + 2] ?? 0;
+  const cx = positions[c * 3] ?? 0;
+  const cy = positions[c * 3 + 1] ?? 0;
+  const cz = positions[c * 3 + 2] ?? 0;
+  const ux = bx - ax;
+  const uy = by - ay;
+  const uz = bz - az;
+  const vx = cx - ax;
+  const vy = cy - ay;
+  const vz = cz - az;
+  const nx = uy * vz - uz * vy;
+  const ny = uz * vx - ux * vz;
+  const nz = ux * vy - uy * vx;
+  if (Math.sqrt(nx * nx + ny * ny + nz * nz) < MIN_NORMAL_LENGTH) {
+    return undefined; // Degenerate (collinear or duplicate) triangle.
+  }
+  return [nx, ny, nz];
 }
 
 function concatFloat32(parts: readonly Float32Array[]): Float32Array {

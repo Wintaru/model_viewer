@@ -215,6 +215,54 @@ describe("decodeTessDataStream", () => {
     ]);
   });
 
+  it("repairs a zero-length vertex normal from its own triangle's real geometry", () => {
+    // A real customer part measured this session (DECISIONS.md) has this
+    // exact pattern in every one of its 34 decoded blocks: the first
+    // vertex of the first strip carries a stored normal of exactly
+    // (0,0,0), which lights as if by ambient light alone, patchy against
+    // its correctly-lit neighbors on the same triangle. Flat quad in the
+    // XY plane, so the correct repaired normal is unambiguous: +Z.
+    const positions = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0];
+    const normals = [0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1];
+    const block = buildTessellationBlock([4], positions, normals);
+
+    const mesh = decodeTessDataStream(block);
+
+    expect(Array.from(mesh.normals)).toEqual([
+      0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+    ]);
+  });
+
+  it("repairs both vertices when a strip's first two share one zero-length normal", () => {
+    // The real part's own pattern sometimes zeroes strip-local offsets 0
+    // *and* 1 (DECISIONS.md) — both share triangle k=0, so both must come
+    // back correctly repaired from that one real triangle, not just the
+    // first one found.
+    const positions = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0];
+    const normals = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1];
+    const block = buildTessellationBlock([4], positions, normals);
+
+    const mesh = decodeTessDataStream(block);
+
+    expect(Array.from(mesh.normals)).toEqual([
+      0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+    ]);
+  });
+
+  it("leaves a vertex with no non-degenerate triangle unrepaired rather than guessing", () => {
+    // All 4 positions collinear -- every triangle in the strip is
+    // degenerate, so there is no real geometry to derive a normal from.
+    const positions = [0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0];
+    const normals = [0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0];
+    const block = buildTessellationBlock([4], positions, normals);
+
+    const mesh = decodeTessDataStream(block);
+
+    expect(mesh.normals[0]).toBe(0);
+    expect(mesh.normals[1]).toBe(0);
+    expect(mesh.normals[2]).toBe(0);
+  });
+
   it("finds nothing in bytes with no valid tessellation header", () => {
     const mesh = decodeTessDataStream(new Uint8Array(1_000));
 
