@@ -194,6 +194,11 @@ def _scan(blob, align, verbose=False):
         nf = struct.unpack_from(f"<{need}f", body, (pos + need) * 4)
 
         # Sanity: positions must be real coordinates, normals unit length.
+        # Tolerance 0.05 -> 0.5: a real filleted-bend strip on a real
+        # customer part had only ~half its normals within 0.05 of unit
+        # length (smoothly blended along the curve, 0.66-1.21 measured) --
+        # "occasional", the original assumption, was wrong. See the matching
+        # comment on SolidWorksDecodeEngine.ts's UNIT_NORMAL_TOLERANCE.
         if any(v != v or abs(v) > 100.0 for v in vf):
             i += 1
             continue
@@ -203,7 +208,7 @@ def _scan(blob, align, verbose=False):
             L = math.sqrt(x * x + y * y + z * z)
             if L > 1e-9:
                 ok += 1
-                if abs(L - 1.0) < 0.05:
+                if abs(L - 1.0) < 0.5:
                     unit += 1
         if ok == 0 or unit / ok < 0.8:
             i += 1

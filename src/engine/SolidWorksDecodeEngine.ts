@@ -102,7 +102,7 @@ const BYTES_PER_WORD = 4;
 const FLOATS_PER_VERTEX = 3;
 const MAX_ABS_POSITION_METRES = 100.0;
 const MIN_NORMAL_LENGTH = 1e-9;
-const UNIT_NORMAL_TOLERANCE = 0.05;
+const UNIT_NORMAL_TOLERANCE = 0.5;
 const MIN_UNIT_NORMAL_RATIO = 0.8;
 
 export interface SolidWorksMesh {
@@ -404,8 +404,22 @@ function positionsLookValid(positions: Float32Array): boolean {
  * denormal near 1e-44, which the check above lets through) but never has
  * unit length as a normal — ARCHITECTURE.md section 6's third warning. Most,
  * not all, non-zero normals must be within `UNIT_NORMAL_TOLERANCE` of length
- * 1, matching `research/d9-decode.py`'s own tolerance for the occasional
- * genuinely-non-unit normal real tessellators emit.
+ * 1, matching `research/d9-decode.py`'s own tolerance.
+ *
+ * `UNIT_NORMAL_TOLERANCE` was originally 0.05, on the assumption that a
+ * genuinely-non-unit normal is rare. Measured wrong, not just tight: a real
+ * customer part's small tessellation strip along a filleted bend (radiused
+ * per its drawing) had only 14 of 26 normals within 0.05 of unit length —
+ * roughly half, not "occasional" — so the whole strip was silently dropped,
+ * leaving a real gap in the decoded surface (DECISIONS.md). The bad-length
+ * values themselves clustered tightly around 1 (0.66-1.21, from smoothly
+ * blended/interpolated normals along the curve), nothing like the wildly
+ * divergent or NaN lengths a coincidental byte-pattern match produces — so
+ * 0.5 was chosen as comfortable margin around real measured data, not a
+ * round number. Verified against the whole NIST corpus, not just this one
+ * file: `MIN_UNIT_NORMAL_RATIO`'s 80% bar still does the real anti-garbage
+ * work (unchanged), and every file that passed the STEP-bounding-box check
+ * before this change still does — one more (`nist_ftc_11`) now does too.
  */
 function normalsLookValid(normals: Float32Array): boolean {
   let nonZeroCount = 0;

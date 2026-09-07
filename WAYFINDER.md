@@ -238,9 +238,42 @@ scope by absence of a decision, not by absence of a path. See D12.
   default: a consciously-invoked, visually-inspectable, reversible (reload
   the file) action affords more latitude than a default a caller might never
   look at twice.
+- **D16 — The unit-normal-ratio validity check was too strict, silently
+  dropping real curved-surface tessellation blocks, 2026-09-07.** Grew out
+  of investigating the same `customer part A` gaps D15 tried (and
+  failed, see that entry's supersede note) to paper over. Chasing one
+  specific visual gap by hand (pixel-sampling background-black, a live
+  `DoubleSide` test ruling out backface culling) found nothing wrong at
+  that exact spot — but a byte-level scan of every "4,8,2" marker
+  candidate, including ones the decoder's own `normalsLookValid` check
+  silently rejects, found two small (28-29 vertex) real tessellation
+  blocks thrown out for having only ~50% of their normals within
+  `UNIT_NORMAL_TOLERANCE` (then 0.05) of unit length — not the "occasional"
+  exception that tolerance was tuned for, but half a filleted-bend strip's
+  worth of smoothly-blended normals (measured 0.66-1.21, real and
+  legitimate, not garbage). Widened `UNIT_NORMAL_TOLERANCE` to 0.5 in
+  `SolidWorksDecodeEngine.ts` and the matching constant in
+  `research/d9-decode.py` — `MIN_UNIT_NORMAL_RATIO` (0.8) untouched, still
+  doing the real anti-garbage work.
+
+  Verified, not assumed: recovers exactly the same 4,196/2,886
+  vertex/triangle counts in the real TypeScript engine as in a Python
+  reimplementation of the fix, and against the real file this
+  investigation started from, makes the decoded surface fully watertight
+  (0 boundary edges, up from 77) — resolving the actual root cause behind
+  every gap D15 was trying to paper over after the fact. Checked against
+  the whole NIST corpus, not just this one file: the existing "6 of 11
+  reproduce their STEP bounding box" measurement (D9, next below) improves
+  to 7 of 11 (`nist_ftc_11` now passes) with zero regressions on the other
+  10. The specific *visual* notch that prompted this investigation turned
+  out to be something else entirely — see DECISIONS.md for why it's most
+  likely real, intentional geometry (a chamfer/relief cut the actual
+  drawing confirms belongs there), not a defect.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
-  Layout known and verified: 6 of 11 NIST parts reproduce their STEP bounding
-  box. See `DECISIONS.md`.
+  Layout known and verified: 6 of 11 NIST parts reproduce their STEP
+  bounding box. **Updated 2026-09-07 — see D16, above: now 7 of 11**, after
+  fixing an overly strict tessellation-block validity check. See
+  `DECISIONS.md`.
 - **D8 — SolidWorks caches a display mesh. Confirmed 2026-09-04 08:27.** Every
   part holds a stream containing `uoTempFaceTessData_c` and
   `uoTempBodyTessData_c`. Stream size tracks triangle count at r = 0.92 across
