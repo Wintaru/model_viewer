@@ -1,9 +1,32 @@
 {
   "name": "@wintaru/part-viewer",
-  "version": "0.0.0",
-  "private": true,
+  "version": "1.0.0",
   "description": "Renders engineering CAD files in the browser: STEP/IGES, native SolidWorks parts, mesh formats, and DXF. Conversion runs entirely on the client.",
+  "keywords": [
+    "cad",
+    "step",
+    "iges",
+    "solidworks",
+    "sldprt",
+    "dxf",
+    "stl",
+    "three",
+    "viewer",
+    "webassembly"
+  ],
   "license": "MIT",
+  "author": "Josh Donner (https://github.com/Wintaru)",
+  "homepage": "https://github.com/Wintaru/model_viewer#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Wintaru/model_viewer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Wintaru/model_viewer/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "packageManager": "pnpm@11.20.0",
   "engines": {
@@ -23,10 +46,12 @@
     "./2d": {
       "types": "./dist/2d/index.d.ts",
       "default": "./dist/2d/index.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "sideEffects": false,
   "scripts": {
@@ -42,7 +67,8 @@
     "build:demo": "node scripts/build-library-demo.mjs",
     "serve:demo": "python3 -m http.server 8000 --directory demo",
     "verify": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run test",
-    "test:strict": "node scripts/check-no-skipped-tests.mjs"
+    "test:strict": "node scripts/check-no-skipped-tests.mjs",
+    "prepublishOnly": "pnpm assets && pnpm run verify && pnpm run test:strict && pnpm run build && pnpm run check:dist"
   },
   "dependencies": {
     "occt-import-js": "^0.0.23",
