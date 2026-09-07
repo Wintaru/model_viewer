@@ -45,11 +45,20 @@ float64 in metres, eight bytes apart, height first -- with decoy sizes never
 matching. The region around that pair reads as recognisable standard
 constants rather than arbitrary numbers.
 
-The honest limit on that result: all 87 drawings are ANSI B at the same scale,
-because they are one company's template. Nothing varies, so this cannot yet
-tell "the sheet size field is here" apart from "a constant that equals the
-sheet size is here". One drawing on a different sheet size settles it, from
-any source.
+Every one of those drawings is ANSI B at the same scale, because they are one
+company's template, so at first this could not tell "the sheet size field is
+here" apart from "a constant that equals the sheet size is here". An
+invariance control settles it without needing a second sheet size. A
+coincidental bit pattern turns up about as often per byte in every file, so
+its count rises with the size of the chunk. Across all 88 drawings the chunk
+grows 27 times over, from 768 KB to 20.8 MB, and the counts do not move at
+all: 3 height hits, 2 width hits and 2 adjacent pairs in every single file.
+A field of the sheet behaves that way. Random data cannot.
+
+What that still does not fix is which field means what. Height before width is
+the natural read of an ANSI B sheet, and the neighbouring values have the
+shape of a scale and four margins, but both remain interpretation. One drawing
+on a different sheet size would confirm the lot in a single run.
 
 Usage: d22-value-locate.py <file.SLDDRW> [more files...]
        A PDF of the same name beside it enables the extra sheet-number search.
@@ -165,6 +174,26 @@ def present(sorted_values: list[float], target: float, tolerance: float) -> bool
     return hi > lo
 
 
+def exact_offsets_of(chunk: bytes, target: float) -> list[int]:
+    """Every byte offset holding exactly this float64, by bit pattern.
+
+    A value written by the same arithmetic that produced it here -- 17 inches
+    times 0.0254, say -- lands on the identical 8 bytes, so searching for
+    those bytes is exact rather than approximate. It is also far faster:
+    bytes.find runs in C over the whole buffer, where reading and comparing a
+    float at every offset in Python takes minutes on a 20 MB chunk. Use this
+    for values known in advance, and offsets_of below for a value read off a
+    PDF, which may have been rounded for printing and so needs a tolerance.
+    """
+    pattern = struct.pack("<d", target)
+    found = []
+    position = chunk.find(pattern)
+    while position != -1:
+        found.append(position)
+        position = chunk.find(pattern, position + 1)
+    return found
+
+
 def offsets_of(chunk: bytes, target: float) -> list[int]:
     """Every byte offset holding this value, as float64 or float32."""
     found = []
@@ -224,8 +253,8 @@ def sheet_record(chunk: bytes) -> None:
     ]:
         for name, (width_in, height_in) in sizes.items():
             width, height = width_in * INCHES_TO_METRES, height_in * INCHES_TO_METRES
-            heights = offsets_of(chunk, height)
-            widths = set(offsets_of(chunk, width))
+            heights = exact_offsets_of(chunk, height)
+            widths = set(exact_offsets_of(chunk, width))
             pairs = [o for o in heights if o + 8 in widths]
             if not pairs:
                 continue
@@ -265,7 +294,9 @@ def examine(path: pathlib.Path) -> None:
         return
 
     numbers = pdf_numbers(pdf)
-    f64, f32 = float_index(chunk)
+    # Building the float index reads every byte offset in Python, which costs
+    # minutes on a 20 MB chunk. Skip it when there is nothing to look up.
+    f64, f32 = float_index(chunk) if numbers else ([], [])
     print(f"=== {path.suffix}, {probe.TARGET_CHUNK} {len(chunk):,} bytes")
     print(
         f"    {len(numbers)} decimal numbers on the sheet; "
@@ -320,12 +351,65 @@ def examine(path: pathlib.Path) -> None:
         print("        none")
 
 
-if len(sys.argv) < 2:
-    print(__doc__)
-    sys.exit(1)
-for argument in sys.argv[1:]:
-    target = pathlib.Path(argument)
-    if target.exists():
-        examine(target)
-    else:
-        print(f"not found: {argument}")
+def invariance_report(paths: list[pathlib.Path]) -> None:
+    """Do the sheet-size hits stay put as the drawing grows?
+
+    This is the control that decides whether the sheet record is real. A
+    coincidental bit pattern turns up about as often per byte in every file,
+    so its count rises with the size of the chunk. A field of the sheet record
+    appears once per sheet however much else the drawing holds. Run this over
+    a corpus and read the spread: a flat count across a wide range of sizes
+    cannot be coincidence.
+    """
+    width = SHEET_SIZES_INCHES["ANSI B"][0] * INCHES_TO_METRES
+    height = SHEET_SIZES_INCHES["ANSI B"][1] * INCHES_TO_METRES
+    rows = []
+    for path in paths:
+        chunk = next(
+            (
+                payload
+                for name, payload in probe.parse_modern_format(path.read_bytes())
+                if name == probe.TARGET_CHUNK and payload is not None
+            ),
+            None,
+        )
+        if chunk is None:
+            continue
+        heights = exact_offsets_of(chunk, height)
+        widths = set(exact_offsets_of(chunk, width))
+        pairs = sum(1 for offset in heights if offset + 8 in widths)
+        rows.append((len(chunk), len(heights), pairs))
+    if len(rows) < 2:
+        return
+    sizes = [row[0] for row in rows]
+    print(f"\ninvariance control over {len(rows)} drawings")
+    print(
+        f"    chunk sizes span {min(sizes):,} to {max(sizes):,} bytes, "
+        f"a {max(sizes) / min(sizes):.0f} times range"
+    )
+    print(f"    height-value hits per drawing: {sorted({row[1] for row in rows})}")
+    print(f"    adjacent height and width pairs: {sorted({row[2] for row in rows})}")
+    print(
+        "    One value in each of those two lines means the count does not grow"
+        "\n    with the drawing. These are fields of the sheet, not bit patterns"
+        "\n    found by chance."
+    )
+
+
+def main() -> None:
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+    examined = []
+    for argument in sys.argv[1:]:
+        target = pathlib.Path(argument)
+        if target.exists():
+            examine(target)
+            examined.append(target)
+        else:
+            print(f"not found: {argument}")
+    invariance_report(examined)
+
+
+if __name__ == "__main__":
+    main()

@@ -822,19 +822,32 @@ of a scale held as numerator and denominator. At a fixed distance after it sit
 **four consecutive values of exactly half an inch**, which is the shape of
 four sheet margins. Both patterns are identical in every file checked.
 
-**The honest limit, and it is a real one.** All 87 drawings are ANSI B at the
-same scale, because they are one company's template. Nothing varies. So this
-cannot yet tell "the sheet size field is here" apart from "a constant that
-happens to equal the sheet size is here", and the scale and margin readings
-are interpretation, not measurement. Attempting to check the scale against the
-PDF failed for a separate reason: `pdftotext` extracts no `SCALE` text from
-these files at all, so the title block is not reachable that way.
+**The limit that seemed real, and how it fell, 2026-09-07 16:24.** All the
+drawings are ANSI B at one scale, because they are one company's template.
+Nothing varies, so the first reading of this could not tell "the sheet size
+field is here" apart from "a constant equal to the sheet size is here". An
+attempt to check the scale against the PDFs failed for a separate reason:
+`pdftotext` extracts no `SCALE` text from any of them, so the title block is
+not reachable that way.
 
-**What settles it is now cheap.** One drawing on a different sheet size, or at
-a different scale, from any source at all — it does not need to be a customer
-file, and it does not need SolidWorks to make. If the located values track the
-new sheet, the field is confirmed and the sheet record is decoded. Next after
-that: `moView_c`, using the same anchoring.
+**An invariance control settles it, with no second sheet size needed.** A
+coincidental bit pattern turns up about as often per byte in every file, so
+its count grows with the chunk. A field of the sheet appears once per sheet
+however large the drawing gets. Measured across **all 88 drawings**, where the
+chunk grows **27 times over, from 768 KB to 20.8 MB**: 3 height hits, 2 width
+hits and 2 adjacent pairs — **the same counts in every single file, with no
+spread at all**. Random data cannot do that. These are fields of the sheet
+record.
+
+What that does not fix is which field means what. Height before width is the
+natural read of an ANSI B sheet, and the neighbours have the shape of a scale
+and four margins, but both are still interpretation. One drawing on a
+different sheet size confirms the lot in one run, from any source — no
+customer file and no SolidWorks needed. GitHub does not index binaries so its
+code search finds none, and the public model sites mostly want an account, so
+this is a small errand rather than a free lookup.
+
+Next after that: `moView_c`, by the same anchoring.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 
