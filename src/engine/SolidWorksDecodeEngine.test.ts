@@ -190,10 +190,31 @@ function unitNormals(vertexCount: number): number[] {
   return normals;
 }
 
+function normalizeForTest(v: readonly number[]): number[] {
+  const length = Math.sqrt(v.reduce((sum, c) => sum + c * c, 0));
+  return v.map((c) => c / length);
+}
+
+/** float32 round-tripping plus the crease-angle averaging itself leaves a
+ * little room for error, so component-wise closeness beats exact equality
+ * for every hand-derived expected normal below. */
+function expectVectorClose(
+  got: readonly number[],
+  want: readonly number[],
+): void {
+  expect(got).toHaveLength(want.length);
+  for (let i = 0; i < want.length; i++) {
+    expect(got[i]).toBeCloseTo(want[i] ?? 0, 4);
+  }
+}
+
 describe("decodeTessDataStream", () => {
   it("builds triangle strips, not fans, with alternating winding", () => {
     const stripSizes = [4, 5];
     const vertexCount = 9;
+    // Collinear positions -- every triangle here is degenerate, so this
+    // exercises indices/winding only; normals are covered by the
+    // dedicated tests below.
     const positions = Array.from(
       { length: vertexCount * 3 },
       (_, i) => i * 0.01,
@@ -206,7 +227,9 @@ describe("decodeTessDataStream", () => {
     expect(Array.from(mesh.positions)).toEqual(
       positions.map((v) => Math.fround(v)),
     );
-    expect(Array.from(mesh.normals)).toEqual(normals);
+    expect(Array.from(mesh.normals)).toEqual(
+      new Array(vertexCount * 3).fill(0),
+    );
     // Strip of 4 (vertices 0-3): [0,1,2], [2,1,3] — fanning from vertex 0
     // would instead give [0,1,2],[0,2,3], which this must NOT match.
     // Strip of 5 (vertices 4-8): [4,5,6],[6,5,7],[6,7,8].
@@ -215,13 +238,13 @@ describe("decodeTessDataStream", () => {
     ]);
   });
 
-  it("repairs a zero-length vertex normal from its own triangle's real geometry", () => {
-    // A real customer part measured this session (DECISIONS.md) has this
-    // exact pattern in every one of its 34 decoded blocks: the first
-    // vertex of the first strip carries a stored normal of exactly
-    // (0,0,0), which lights as if by ambient light alone, patchy against
-    // its correctly-lit neighbors on the same triangle. Flat quad in the
-    // XY plane, so the correct repaired normal is unambiguous: +Z.
+  it("computes a flat quad's normal from its own triangle geometry, ignoring whatever the file stored", () => {
+    // Normals are never read from the file at all (DECISIONS.md) -- every
+    // vertex normal is regenerated from the decoded triangle positions, so
+    // a stored value of exactly zero (a real, measured pattern in every
+    // one of a real customer part's 34 decoded blocks) is no different
+    // from any other stored garbage: it's simply never consulted. Flat
+    // quad in the XY plane, so the correct normal is unambiguous: +Z.
     const positions = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0];
     const normals = [0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1];
     const block = buildTessellationBlock([4], positions, normals);
@@ -233,11 +256,10 @@ describe("decodeTessDataStream", () => {
     ]);
   });
 
-  it("repairs both vertices when a strip's first two share one zero-length normal", () => {
-    // The real part's own pattern sometimes zeroes strip-local offsets 0
-    // *and* 1 (DECISIONS.md) — both share triangle k=0, so both must come
-    // back correctly repaired from that one real triangle, not just the
-    // first one found.
+  it("computes the same flat normal regardless of which stored values happened to be zero", () => {
+    // Same flat quad, different (still-irrelevant) stored values -- proves
+    // the previous test's result isn't an accident of which specific
+    // vertex happened to carry a zero.
     const positions = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0];
     const normals = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1];
     const block = buildTessellationBlock([4], positions, normals);
@@ -249,7 +271,7 @@ describe("decodeTessDataStream", () => {
     ]);
   });
 
-  it("leaves a vertex with no non-degenerate triangle unrepaired rather than guessing", () => {
+  it("leaves a vertex with no non-degenerate triangle at (0,0,0) rather than guessing", () => {
     // All 4 positions collinear -- every triangle in the strip is
     // degenerate, so there is no real geometry to derive a normal from.
     const positions = [0, 0, 0, 1, 0, 0, 2, 0, 0, 3, 0, 0];
@@ -258,9 +280,150 @@ describe("decodeTessDataStream", () => {
 
     const mesh = decodeTessDataStream(block);
 
-    expect(mesh.normals[0]).toBe(0);
-    expect(mesh.normals[1]).toBe(0);
-    expect(mesh.normals[2]).toBe(0);
+    expect(Array.from(mesh.normals)).toEqual(new Array(12).fill(0));
+  });
+
+  it("blends normals across a shared edge within one block when the crease angle is gentle", () => {
+    // Two flat quads (as two strips of one block) sharing an edge, the
+    // second tilted 10 degrees from the first around that shared edge --
+    // comfortably under the 45-degree crease threshold, so this reads as
+    // one continuous, gently curved surface split into two strips (a real
+    // pattern SolidWorks's own tessellation uses for a fillet or a
+    // cylindrical wall). Every value below is hand-derived from the exact
+    // geometry, not just asserted against the implementation.
+    const tiltRad = (10 * Math.PI) / 180;
+    const sin10 = Math.sin(tiltRad);
+    const cos10 = Math.cos(tiltRad);
+    const positions = [
+      // Strip 1 (vertices 0-3): flat quad in the XY plane, normal +Z.
+      0,
+      0,
+      0,
+      1,
+      0,
+      0,
+      0,
+      1,
+      0,
+      1,
+      1,
+      0,
+      // Strip 2 (vertices 4-7): its own copies of the shared edge
+      // (0,1,0)/(1,1,0) -- this format never shares literal indices
+      // across strips, even within one block -- then the far edge
+      // rotated 10 degrees around that shared edge (the X axis at y=1).
+      0,
+      1,
+      0,
+      1,
+      1,
+      0,
+      0,
+      1 + cos10,
+      sin10,
+      1,
+      1 + cos10,
+      sin10,
+    ];
+    const block = buildTessellationBlock([4, 4], positions, unitNormals(8));
+
+    const mesh = decodeTessDataStream(block);
+    const normals = Array.from(mesh.normals);
+
+    // Vertices 0 and 1 (strip 1 only, not on the shared edge) keep +Z.
+    expectVectorClose(normals.slice(0, 3), [0, 0, 1]);
+    expectVectorClose(normals.slice(3, 6), [0, 0, 1]);
+    // Vertices 6 and 7 (strip 2 only, not on the shared edge) keep the
+    // strip's own tilted direction.
+    expectVectorClose(normals.slice(18, 21), [0, -sin10, cos10]);
+    expectVectorClose(normals.slice(21, 24), [0, -sin10, cos10]);
+    // The shared edge (vertices 2 and 4, both at (0,1,0)) blends both
+    // strips' triangles that touch it: 2 from strip 1's own flat quad
+    // plus 1 from strip 2, normalize(0, -sin10, 2+cos10).
+    const blendA = normalizeForTest([0, -sin10, 2 + cos10]);
+    expectVectorClose(normals.slice(6, 9), blendA);
+    expectVectorClose(normals.slice(12, 15), blendA);
+    // The other shared edge (vertices 3 and 5, both at (1,1,0)) blends 1
+    // triangle from strip 1 plus 2 from strip 2:
+    // normalize(0, -2*sin10, 1+2*cos10).
+    const blendB = normalizeForTest([0, -2 * sin10, 1 + 2 * cos10]);
+    expectVectorClose(normals.slice(9, 12), blendB);
+    expectVectorClose(normals.slice(15, 18), blendB);
+  });
+
+  it("keeps a sharp edge crisp within one block instead of blending across it", () => {
+    // Same construction as the gentle-crease test above, but tilted a
+    // full 90 degrees -- a genuine sharp edge (a sheet-metal bend), well
+    // past the 45-degree crease threshold. Neither strip's own vertices
+    // should be pulled towards the other's direction at all.
+    const positions = [
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1,
+    ];
+    const block = buildTessellationBlock([4, 4], positions, unitNormals(8));
+
+    const mesh = decodeTessDataStream(block);
+    const normals = Array.from(mesh.normals);
+
+    // Every strip-1 vertex, including the two on the shared edge, keeps
+    // strip 1's own flat +Z -- completely unaffected by strip 2.
+    for (const [start, end] of [
+      [0, 3],
+      [3, 6],
+      [6, 9],
+      [9, 12],
+    ] as const) {
+      expectVectorClose(normals.slice(start, end), [0, 0, 1]);
+    }
+    // Every strip-2 vertex keeps strip 2's own flat direction (-Y),
+    // completely unaffected by strip 1.
+    for (const [start, end] of [
+      [12, 15],
+      [15, 18],
+      [18, 21],
+      [21, 24],
+    ] as const) {
+      expectVectorClose(normals.slice(start, end), [0, -1, 0]);
+    }
+  });
+
+  it("never blends normals across two different tessellation blocks, even at a shared, gently-angled edge", () => {
+    // The exact same 10-degree geometry as the gentle-crease test above --
+    // but as two SEPARATE blocks (two concatenated tessellation records)
+    // instead of two strips of one block. Unlike that test, nothing here
+    // should blend: welding is scoped to one block only (DECISIONS.md --
+    // a real NIST calibration part showed globally-welded positions
+    // letting an unrelated block drag a genuinely flat block's normal
+    // towards a completely different face).
+    const tiltRad = (10 * Math.PI) / 180;
+    const sin10 = Math.sin(tiltRad);
+    const cos10 = Math.cos(tiltRad);
+    const block1 = buildTessellationBlock(
+      [4],
+      [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0],
+      unitNormals(4),
+    );
+    const block2 = buildTessellationBlock(
+      [4],
+      [0, 1, 0, 1, 1, 0, 0, 1 + cos10, sin10, 1, 1 + cos10, sin10],
+      unitNormals(4),
+    );
+    const combined = new Uint8Array(block1.length + block2.length);
+    combined.set(block1, 0);
+    combined.set(block2, block1.length);
+
+    const mesh = decodeTessDataStream(combined);
+    const normals = Array.from(mesh.normals);
+
+    for (let vertex = 0; vertex < 4; vertex++) {
+      expectVectorClose(normals.slice(vertex * 3, vertex * 3 + 3), [0, 0, 1]);
+    }
+    for (let vertex = 4; vertex < 8; vertex++) {
+      expectVectorClose(normals.slice(vertex * 3, vertex * 3 + 3), [
+        0,
+        -sin10,
+        cos10,
+      ]);
+    }
   });
 
   it("finds nothing in bytes with no valid tessellation header", () => {
@@ -320,10 +483,13 @@ describe("decodeTessDataStream", () => {
 
     const mesh = decodeTessDataStream(block);
 
+    // The block must still be *found* (scan acceptance is what
+    // UNIT_NORMAL_TOLERANCE governs) -- the stored normals asserted above
+    // are never read for the output mesh itself (DECISIONS.md), and these
+    // particular positions are collinear, so the correct synthesized
+    // result is all-zero (no non-degenerate triangle exists).
     expect(mesh.indices.length).toBeGreaterThan(0);
-    expect(Array.from(mesh.normals)).toEqual(
-      normals.map((v) => Math.fround(v)),
-    );
+    expect(Array.from(mesh.normals)).toEqual(new Array(6 * 3).fill(0));
   });
 });
 
@@ -458,7 +624,13 @@ describe("SolidWorksDecodeEngine", () => {
     expect(Array.from(mesh.positions)).toEqual(
       positionsMetres.map((v) => Math.fround(Math.fround(v) * 1000)),
     );
-    expect(Array.from(mesh.normals)).toEqual(normals);
+    // These positions are collinear (same as every other winding-focused
+    // fixture in this file), so every triangle is degenerate and the
+    // correctly-synthesized normal is all-zero -- this test's own focus is
+    // the millimetre conversion and end-to-end wiring, not normals.
+    expect(Array.from(mesh.normals)).toEqual(
+      new Array(vertexCount * 3).fill(0),
+    );
     expect(Array.from(mesh.indices)).toEqual(expectedStripIndices(stripSizes));
     expect(mesh.faces).toEqual([]);
     expect(model.tree).toEqual([{ meshIndices: [0], children: [] }]);

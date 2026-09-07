@@ -104,6 +104,30 @@ const MAX_ABS_POSITION_METRES = 100.0;
 const MIN_NORMAL_LENGTH = 1e-9;
 const UNIT_NORMAL_TOLERANCE = 0.5;
 const MIN_UNIT_NORMAL_RATIO = 0.8;
+// sin(angle) between a triangle's two edge vectors, below which it counts
+// as degenerate. Scale-relative (unlike a raw cross-product-magnitude
+// check) so it classifies consistently whether positions are metres or
+// millimetres, and so float32 rounding noise on an otherwise-collinear
+// triple of points can't manufacture a spurious "real" direction out of
+// pure noise.
+const DEGENERATE_TRIANGLE_SIN_THRESHOLD = 1e-4;
+// Vertices closer than this (metres) are treated as the same real point,
+// so a shared edge between two strips reads as one edge, not two
+// coincidentally-nearby ones -- roughly a micron, comfortably above
+// float32 rounding noise and comfortably below any real, distinct feature.
+const WELD_DECIMAL_PLACES = 6;
+// The standard "smoothing angle" every 3D/CAD tool exposes for exactly
+// this decision (Blender's Shade Auto Smooth, 3ds Max smoothing groups,
+// MeshLab's normal estimation, ...): blend across an edge whose two faces
+// differ by less than this (a fine tessellation of a real curve), keep a
+// hard edge otherwise (a genuine part edge, like a sheet-metal bend).
+// Chosen from measurement, not a round-number guess: a real customer
+// part's actual shared-edge dihedral angles cluster tightly under 30
+// degrees (fillets, hole walls) or over 90 (real bends), with zero edges
+// measured anywhere in between (DECISIONS.md) -- 45 sits in the middle of
+// that empty gap, so the exact value carries a wide safety margin.
+const CREASE_ANGLE_DEGREES = 45;
+const CREASE_ANGLE_MIN_COS = Math.cos((CREASE_ANGLE_DEGREES * Math.PI) / 180);
 
 export interface SolidWorksMesh {
   readonly positions: Float32Array;
@@ -175,132 +199,304 @@ function assembleMesh(kept: readonly TessellationBlock[]): SolidWorksMesh {
 
   for (const block of kept) {
     positionParts.push(block.positions);
-    normalParts.push(block.normals);
+    normalParts.push(
+      synthesizeSmoothedNormals(block.positions, block.stripSizes),
+    );
 
-    let stripBase = vertexBase;
-    for (const stripSize of block.stripSizes) {
-      for (let k = 0; k < stripSize - 2; k++) {
-        indices.push(
-          ...(k % 2 === 0
-            ? [stripBase + k, stripBase + k + 1, stripBase + k + 2]
-            : [stripBase + k + 1, stripBase + k, stripBase + k + 2]),
-        );
-      }
-      stripBase += stripSize;
+    for (const [a, b, c] of buildStripTriangles(block.stripSizes)) {
+      indices.push(vertexBase + a, vertexBase + b, vertexBase + c);
     }
     vertexBase += block.positions.length / FLOATS_PER_VERTEX;
   }
 
-  const positions = concatFloat32(positionParts);
-  const normals = concatFloat32(normalParts);
-  const indexArray = Uint32Array.from(indices);
-  repairZeroLengthNormals(positions, normals, indexArray);
-
   return {
-    positions,
-    normals,
-    indices: indexArray,
+    positions: concatFloat32(positionParts),
+    normals: concatFloat32(normalParts),
+    indices: Uint32Array.from(indices),
   };
 }
 
+/** One triangle strip's triangles, as local (block-relative) vertex-index
+ * triples — the shared winding rule every consumer of a strip needs
+ * (ARCHITECTURE.md section 6's first warning: strips, not fans). */
+function buildStripTriangles(
+  stripSizes: readonly number[],
+): Array<readonly [number, number, number]> {
+  const triangles: Array<readonly [number, number, number]> = [];
+  let base = 0;
+  for (const stripSize of stripSizes) {
+    for (let k = 0; k < stripSize - 2; k++) {
+      triangles.push(
+        k % 2 === 0
+          ? [base + k, base + k + 1, base + k + 2]
+          : [base + k + 1, base + k, base + k + 2],
+      );
+    }
+    base += stripSize;
+  }
+  return triangles;
+}
+
 /**
- * SolidWorks's own cached tessellation always leaves the *first* vertex of
- * each block's first strip with a stored normal of exactly (0,0,0) —
- * measured across a real customer part, not assumed (DECISIONS.md): 49 of
- * 392 vertices, always at strip-local offset 0 (occasionally offset 1
- * too), never anywhere else, across every one of 34 blocks. It reads like
- * a leading anchor/reference point in the cache's own strip format that
- * never carried a real per-vertex normal, not corruption.
+ * Recomputes every vertex normal for one tessellation block directly from
+ * its own decoded triangle geometry — SolidWorks's own stored per-vertex
+ * normals are never read here. Measured across a real customer part
+ * (DECISIONS.md): those stored values carry at least two distinct,
+ * unrelated defects (a strip's leading vertex stored as exactly zero-
+ * length; other vertices carrying a real but *wrong* unit-length normal,
+ * borrowed from a different, connected face) — trying to detect and patch
+ * each defect in place kept finding a next one, and a narrow per-vertex
+ * "is my own immediate neighbourhood flat" check even *introduced* a third
+ * defect (flattening genuinely curved surfaces it had no way to tell apart
+ * from a truly flat one, one vertex at a time). Discarding the stored
+ * values entirely and regenerating them the way every mesh tool does —
+ * real per-face geometry, blended across an edge only when the two faces
+ * meeting there are close to continuous, kept crisp otherwise — sidesteps
+ * the whole class of "is this specific stored value trustworthy" question,
+ * because it never depends on the answer.
  *
- * A zero vector still shades: a Lambertian dot-product against it is 0
- * regardless of light direction, so it neither errors nor gets clipped —
- * it silently contributes no diffuse light, rendering as if lit by ambient
- * alone, patchy against the correctly-lit vertices right next to it on the
- * same triangle (this is what actually produced the "wrong colour, not
- * just dim" faces reported in DECISIONS.md, not lighting or a missing
- * face). This recomputes a real normal for any such vertex from its own
- * already-decoded triangle geometry — never inventing a position, only
- * deriving a direction the position data already implies.
- *
- * Deliberately broader than the one observed pattern above: this repairs
- * *any* zero-length normal found anywhere in the mesh, not just a strip's
- * first or second vertex. A real unit-ish normal is never exactly zero, so
- * checking the invariant directly is safer than hard-coding the specific
- * strip position this was first found at.
+ * Welds vertices by position **within this block only**, never across
+ * two different blocks even where they meet at a real, continuous edge:
+ * measured on the more complex NIST calibration parts (DECISIONS.md),
+ * welding globally let an unrelated, non-adjacent block's vertex —
+ * coincidentally sharing a welded position, or chained in transitively
+ * through some other gentle edge — drag a genuinely flat block's own
+ * vertex normal towards a completely different face. Scoping welding to
+ * one block trades away smoothing across a curve SolidWorks happened to
+ * split into two blocks, in exchange for never mixing unrelated
+ * geometry — validated against the real customer part and the whole NIST
+ * corpus (12 real files, 392 to 30,632 vertices): every block SolidWorks's
+ * own tessellation is internally flat comes back perfectly consistent,
+ * zero exceptions.
  */
-function repairZeroLengthNormals(
+function synthesizeSmoothedNormals(
   positions: Float32Array,
-  normals: Float32Array,
-  indices: Uint32Array,
-): void {
+  stripSizes: readonly number[],
+): Float32Array {
   const vertexCount = positions.length / FLOATS_PER_VERTEX;
-  const needsRepair = new Uint8Array(vertexCount);
-  let anyNeedsRepair = false;
-  for (let v = 0; v < vertexCount; v++) {
-    if (vectorLength(normals, v) < MIN_NORMAL_LENGTH) {
-      needsRepair[v] = 1;
-      anyNeedsRepair = true;
-    }
-  }
-  if (!anyNeedsRepair) {
-    return;
-  }
+  const triangles = buildStripTriangles(stripSizes);
+  const weldGroupOf = weldPositionsWithinBlock(positions);
+  const faceNormals = triangles.map(([a, b, c]) =>
+    triangleNormal(positions, a, b, c),
+  );
+  const smoothingGroupOfTriangle = groupTrianglesByCreaseAngle(
+    triangles,
+    faceNormals,
+    weldGroupOf,
+  );
+  return averageNormalsPerWeldedSmoothingGroup(
+    vertexCount,
+    triangles,
+    faceNormals,
+    weldGroupOf,
+    smoothingGroupOfTriangle,
+  );
+}
 
-  // Sums a face normal per vertex that needs one, from every triangle that
-  // actually touches it — not just the one triangle the strip-position
-  // pattern above would predict, in case a vertex is legitimately shared
-  // by more than one (unlikely here, but cheap to get right in general).
-  const sumX = new Float64Array(vertexCount);
-  const sumY = new Float64Array(vertexCount);
-  const sumZ = new Float64Array(vertexCount);
-  for (let t = 0; t + 2 < indices.length; t += 3) {
-    const a = indices[t] ?? 0;
-    const b = indices[t + 1] ?? 0;
-    const c = indices[t + 2] ?? 0;
-    if (needsRepair[a] !== 1 && needsRepair[b] !== 1 && needsRepair[c] !== 1) {
-      continue;
+/** Assigns every vertex a group id shared with every other vertex in this
+ * same block sitting at (nearly) the same real-world position. */
+function weldPositionsWithinBlock(positions: Float32Array): Uint32Array {
+  const vertexCount = positions.length / FLOATS_PER_VERTEX;
+  const groupIdByKey = new Map<string, number>();
+  const groupOf = new Uint32Array(vertexCount);
+  for (let v = 0; v < vertexCount; v++) {
+    const x = (positions[v * 3] ?? 0).toFixed(WELD_DECIMAL_PLACES);
+    const y = (positions[v * 3 + 1] ?? 0).toFixed(WELD_DECIMAL_PLACES);
+    const z = (positions[v * 3 + 2] ?? 0).toFixed(WELD_DECIMAL_PLACES);
+    const key = `${x},${y},${z}`;
+    let group = groupIdByKey.get(key);
+    if (group === undefined) {
+      group = groupIdByKey.size;
+      groupIdByKey.set(key, group);
     }
-    const face = triangleNormal(positions, a, b, c);
-    if (face === undefined) {
-      continue;
+    groupOf[v] = group;
+  }
+  return groupOf;
+}
+
+/**
+ * Union-find over triangles: two triangles sharing a welded edge join the
+ * same smoothing group whenever the angle between their own real geometric
+ * normals is gentle (`CREASE_ANGLE_DEGREES`) — a fine tessellation of a
+ * real curve — and stay separate when it's sharp — a genuine part edge.
+ * Returns each triangle's group as its union-find root.
+ */
+function groupTrianglesByCreaseAngle(
+  triangles: ReadonlyArray<readonly [number, number, number]>,
+  faceNormals: ReadonlyArray<readonly [number, number, number] | undefined>,
+  weldGroupOf: Uint32Array,
+): Uint32Array {
+  const parent = Uint32Array.from({ length: triangles.length }, (_, i) => i);
+  const find = (start: number): number => {
+    let root = start;
+    while (parent[root] !== root) {
+      root = parent[root] ?? root;
     }
-    for (const vertex of [a, b, c]) {
-      if (needsRepair[vertex] !== 1) {
-        continue;
+    let current = start;
+    while (current !== root) {
+      const next = parent[current] ?? root;
+      parent[current] = root;
+      current = next;
+    }
+    return root;
+  };
+  const union = (a: number, b: number): void => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) {
+      parent[rootA] = rootB;
+    }
+  };
+
+  const trianglesByWeldedEdge = new Map<string, number[]>();
+  triangles.forEach(([a, b, c], triangleIndex) => {
+    if (faceNormals[triangleIndex] === undefined) {
+      return;
+    }
+    for (const [x, y] of [
+      [a, b],
+      [b, c],
+      [c, a],
+    ] as const) {
+      const key = weldedEdgeKey(weldGroupOf[x] ?? 0, weldGroupOf[y] ?? 0);
+      const sharing = trianglesByWeldedEdge.get(key);
+      if (sharing) {
+        sharing.push(triangleIndex);
+      } else {
+        trianglesByWeldedEdge.set(key, [triangleIndex]);
       }
-      sumX[vertex] = (sumX[vertex] ?? 0) + face[0];
-      sumY[vertex] = (sumY[vertex] ?? 0) + face[1];
-      sumZ[vertex] = (sumZ[vertex] ?? 0) + face[2];
+    }
+  });
+
+  for (const sharingThisEdge of trianglesByWeldedEdge.values()) {
+    for (let i = 0; i < sharingThisEdge.length; i++) {
+      for (let j = i + 1; j < sharingThisEdge.length; j++) {
+        const first = faceNormals[sharingThisEdge[i] ?? 0];
+        const second = faceNormals[sharingThisEdge[j] ?? 0];
+        if (
+          first !== undefined &&
+          second !== undefined &&
+          dotProduct(normalize(first), normalize(second)) >=
+            CREASE_ANGLE_MIN_COS
+        ) {
+          union(sharingThisEdge[i] ?? 0, sharingThisEdge[j] ?? 0);
+        }
+      }
     }
   }
 
-  for (let v = 0; v < vertexCount; v++) {
-    if (needsRepair[v] !== 1) {
-      continue;
+  return Uint32Array.from(triangles, (_, t) => find(t));
+}
+
+function weldedEdgeKey(groupA: number, groupB: number): string {
+  return groupA < groupB ? `${groupA}:${groupB}` : `${groupB}:${groupA}`;
+}
+
+/**
+ * Each vertex's final normal is the area-weighted average of the face
+ * normals of every triangle in its own smoothing group that touches its
+ * exact (welded) position — so two different literal vertices at a real
+ * shared edge, blended together, come out with exactly the same value,
+ * while a vertex touched by no non-degenerate triangle at all is left at
+ * (0,0,0) rather than guessing.
+ */
+function averageNormalsPerWeldedSmoothingGroup(
+  vertexCount: number,
+  triangles: ReadonlyArray<readonly [number, number, number]>,
+  faceNormals: ReadonlyArray<readonly [number, number, number] | undefined>,
+  weldGroupOf: Uint32Array,
+  smoothingGroupOfTriangle: Uint32Array,
+): Float32Array {
+  const sumByKey = new Map<string, [number, number, number]>();
+  const touchingTriangles: number[][] = Array.from(
+    { length: vertexCount },
+    () => [],
+  );
+  triangles.forEach(([a, b, c], triangleIndex) => {
+    const face = faceNormals[triangleIndex];
+    if (face === undefined) {
+      return;
     }
-    const x = sumX[v] ?? 0;
-    const y = sumY[v] ?? 0;
-    const z = sumZ[v] ?? 0;
-    const length = Math.sqrt(x * x + y * y + z * z);
-    if (length < MIN_NORMAL_LENGTH) {
+    const smoothingGroup = smoothingGroupOfTriangle[triangleIndex] ?? 0;
+    for (const vertex of [a, b, c]) {
+      touchingTriangles[vertex]?.push(triangleIndex);
+      const key = `${weldGroupOf[vertex] ?? 0}:${smoothingGroup}`;
+      const sum = sumByKey.get(key) ?? [0, 0, 0];
+      sum[0] += face[0];
+      sum[1] += face[1];
+      sum[2] += face[2];
+      sumByKey.set(key, sum);
+    }
+  });
+
+  const normals = new Float32Array(vertexCount * FLOATS_PER_VERTEX);
+  for (let vertex = 0; vertex < vertexCount; vertex++) {
+    const touching = touchingTriangles[vertex];
+    if (touching === undefined || touching.length === 0) {
       continue; // No non-degenerate triangle touches this vertex; leave it.
     }
-    normals[v * 3] = x / length;
-    normals[v * 3 + 1] = y / length;
-    normals[v * 3 + 2] = z / length;
+    const smoothingGroup = mostCommonSmoothingGroup(
+      touching,
+      smoothingGroupOfTriangle,
+    );
+    const sum = sumByKey.get(`${weldGroupOf[vertex] ?? 0}:${smoothingGroup}`);
+    if (sum === undefined) {
+      continue;
+    }
+    const length = Math.sqrt(sum[0] ** 2 + sum[1] ** 2 + sum[2] ** 2);
+    if (length < MIN_NORMAL_LENGTH) {
+      continue;
+    }
+    normals[vertex * 3] = sum[0] / length;
+    normals[vertex * 3 + 1] = sum[1] / length;
+    normals[vertex * 3 + 2] = sum[2] / length;
   }
+  return normals;
 }
 
-function vectorLength(components: Float32Array, index: number): number {
-  const x = components[index * 3] ?? 0;
-  const y = components[index * 3 + 1] ?? 0;
-  const z = components[index * 3 + 2] ?? 0;
-  return Math.sqrt(x * x + y * y + z * z);
+/** Which smoothing group a vertex's own touching triangles belong to —
+ * almost always unanimous; the rare disagreement (a genuine corner) breaks
+ * by majority rather than crashing or picking arbitrarily. */
+function mostCommonSmoothingGroup(
+  triangleIndices: readonly number[],
+  smoothingGroupOfTriangle: Uint32Array,
+): number {
+  const counts = new Map<number, number>();
+  let best = smoothingGroupOfTriangle[triangleIndices[0] ?? 0] ?? 0;
+  let bestCount = 0;
+  for (const triangleIndex of triangleIndices) {
+    const group = smoothingGroupOfTriangle[triangleIndex] ?? 0;
+    const count = (counts.get(group) ?? 0) + 1;
+    counts.set(group, count);
+    if (count > bestCount) {
+      bestCount = count;
+      best = group;
+    }
+  }
+  return best;
+}
+
+function normalize(
+  v: readonly [number, number, number],
+): readonly [number, number, number] {
+  const length = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+  return length < MIN_NORMAL_LENGTH
+    ? v
+    : [v[0] / length, v[1] / length, v[2] / length];
+}
+
+function dotProduct(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 }
 
 /**
- * The real, outward-consistent face normal for one triangle, using its
- * vertices in exactly the order `indices` already stores them — that order
+ * The real, outward-consistent face normal for one triangle (unnormalized —
+ * its own magnitude is proportional to twice the triangle's area, used as
+ * an area weight when averaging several triangles together), using its
+ * vertices in exactly the order callers already store them — that order
  * already encodes the correct winding (validated throughout this file's
  * own tests), so no separate sign correction is needed here, unlike a
  * boundary fan built from scratch.
@@ -326,11 +522,17 @@ function triangleNormal(
   const vx = cx - ax;
   const vy = cy - ay;
   const vz = cz - az;
+  const uLength = Math.sqrt(ux * ux + uy * uy + uz * uz);
+  const vLength = Math.sqrt(vx * vx + vy * vy + vz * vz);
+  if (uLength < MIN_NORMAL_LENGTH || vLength < MIN_NORMAL_LENGTH) {
+    return undefined; // Duplicate points -- no edge to take a normal from.
+  }
   const nx = uy * vz - uz * vy;
   const ny = uz * vx - ux * vz;
   const nz = ux * vy - uy * vx;
-  if (Math.sqrt(nx * nx + ny * ny + nz * nz) < MIN_NORMAL_LENGTH) {
-    return undefined; // Degenerate (collinear or duplicate) triangle.
+  const crossLength = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  if (crossLength / (uLength * vLength) < DEGENERATE_TRIANGLE_SIN_THRESHOLD) {
+    return undefined; // Degenerate: the two edges are collinear.
   }
   return [nx, ny, nz];
 }

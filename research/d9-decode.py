@@ -24,6 +24,15 @@ Three things that are easy to get wrong, each of which cost a debugging round:
 Verified against independent ground truth: 6 of 11 NIST parts reproduce the
 bounding box measured from their STEP twin with OCCT. See research/d9-verify-cached.py.
 
+The "normals" this script writes to its output JSON are the file's own
+scanned per-vertex values, unmodified -- useful for inspecting the raw
+format. WAYFINDER.md's D18: the shipped SolidWorksDecodeEngine.ts no longer
+uses these at all, having found them to carry more than one distinct
+defect; it regenerates every normal from the decoded triangle geometry
+instead. This is a deliberate, documented divergence, not drift -- nothing
+that reads this script's JSON output depends on its normals matching the
+shipped engine's.
+
 Usage: d9-decode.py <file.SLDPRT> <out.json>
 """
 import json

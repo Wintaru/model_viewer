@@ -307,6 +307,66 @@ scope by absence of a decision, not by absence of a path. See D12.
   consistent shading. Whole NIST corpus: vertex/triangle counts and the
   STEP-bounding-box check are both unaffected (this only changes normal
   *values*, never positions or topology), so nothing regressed.
+  **Superseded 2026-09-07, see D18, below: the specific repair function
+  this entry describes no longer exists** — replaced by a single
+  from-scratch normal synthesis that makes a dedicated zero-length repair
+  unnecessary (stored normals are never read at all any more). The
+  diagnosis above (the defect, its cause, its measurement) remains
+  accurate history.
+- **D18 — Stored per-vertex normals have more than one distinct defect;
+  the fix is to stop reading them at all and recompute from geometry,
+  2026-09-07.** After D17 shipped, Josh found *more* wrong-looking faces
+  and pushed back a second time on "it's just lighting" — correctly again.
+  Investigation found a second, different defect: on every geometrically
+  flat tessellation block (no curvature to justify variation), a real
+  chunk of vertices carried a *non-zero*, unit-length stored normal
+  pointing roughly 90 degrees off their own face's true direction — 98% of
+  those turned out to exactly match a *different*, connected face's real
+  normal (two faces meeting at a sheet-metal bend are near-perpendicular,
+  so one face's true normal lies almost exactly in the other's plane).
+
+  A first fix (`repairMismatchedFlatNormals`, checking only the 2-3
+  triangles directly touching one vertex) shipped, then had to be
+  reverted the same day: Josh reported new gradient artifacts across
+  panels that should render perfectly flat. Root cause, found by diffing
+  before/after normals on the real file: a gently curved surface can have
+  any two *adjacent* triangles agree within the flatness tolerance even
+  though the whole surface clearly isn't flat — the fix's own
+  investigation had correctly checked flatness at the *whole-block* level,
+  but the shipped code checked it per-vertex, a materially weaker test
+  that kept mistaking pieces of real curves for flat spots and "correcting"
+  them to a slightly different flat direction each time — exactly the
+  patchwork-gradient look reported.
+
+  Rather than patch that check again, replaced the whole repair strategy:
+  `synthesizeSmoothedNormals` in `SolidWorksDecodeEngine.ts` throws away
+  every stored normal and recomputes each vertex's normal from its own
+  decoded triangle geometry, using the same technique every 3D/CAD tool
+  exposes for exactly this decision (Blender's Shade Auto Smooth, 3ds
+  Max's smoothing groups): weld vertices at the same real position, then
+  blend normals across a shared edge only when the two faces meeting
+  there are close to continuous (a fine tessellation of a real curve,
+  measured on the real file: a clean gap in dihedral angles from 30 to 75
+  degrees, so 45 sits with a wide safety margin), keeping a hard edge
+  otherwise (a genuine part edge). Welding and blending are scoped to
+  **one tessellation block at a time, never across blocks** — measured on
+  the more complex NIST calibration parts, welding globally let an
+  unrelated block's vertex drag a genuinely flat block's own normal
+  towards a completely different face; scoping to one block eliminated
+  every such case with zero cost to the actual defect (the real file's own
+  problem vertices never needed cross-block welding to fix).
+
+  Verified far more broadly than the reverted attempt: every one of the
+  12 real files checked (the real customer part, 392 vertices; the whole
+  11-file NIST corpus, up to 30,632 vertices) comes back with **zero**
+  exceptions — every block SolidWorks's own tessellation is internally
+  flat is now internally consistent, with no per-file tuning. Confirmed
+  visually in a real browser: the panels that showed gradients under the
+  reverted attempt now render uniformly flat, the bend stays crisp, and
+  the genuinely curved hole walls still shade smoothly. See DECISIONS.md
+  for the full investigation, including the two hypotheses (edge/tangent-
+  vector leakage; coincidental match from a small direction palette)
+  checked and ruled out before finding the real cause.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP
   bounding box. **Updated 2026-09-07 — see D16, above: now 7 of 11**, after
