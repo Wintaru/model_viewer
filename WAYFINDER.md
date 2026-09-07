@@ -727,6 +727,56 @@ First concrete steps, in order:
 3. Only then decide whether this is tractable. Report honestly if it is not
    — v1 does not depend on the answer.
 
+**Step 1 done, 2026-09-07 — and the "no magic-number anchor" premise above
+was wrong.** The chunk is plain structured data (entropy 3.2 to 3.9 bits per
+byte, half to two thirds of all bytes zero) and it names its own types. Every
+class writes its name in plaintext the first time it appears, framed as
+`FF FF`, a u16 schema number, and a u16 name length — matching 132 of 132,
+147 of 147, and 150 of 150 names across drawings from 215 KB to 13.5 MB. That
+is the layout MFC's `CArchive` uses for a new class, and SolidWorks is an MFC
+application. The names are the drawing itself: `moView_c`, `moLayer_c`,
+`moDisplayDistanceDim_c`, `moDimTolerance_c`, `moDisplayNote_c`,
+`moTitleBlockFeature_c`, `moCompEdge_c`, `gcXhatch_c`, `bomTable_c`. The
+vocabulary grows only from 132 to 150 across a 26x range of size, so the set
+of types to implement is bounded and small. See
+`research/d22-definition-probe.py`.
+
+**Step 2 attempted the same day, and it did not work. Three hypotheses, all
+dead.** Recorded so nobody spends the time again:
+
+- **A generic sequential walker is structurally impossible, not merely hard.**
+  MFC's `CArchive` delegates each object's body to that class's own
+  `Serialize` method. Nothing in the stream states an object's length. So no
+  reader can skip an object whose layout it does not already know, and one
+  unknown class stops the walk permanently.
+- **The `0x8000 | index` class back-reference does not hold as written.**
+  Valid indices are genuinely enriched — 885 occurrences against 198 for
+  same-magnitude values that cannot be an index in this file, about 4.5 times
+  — so these values do mean something. But 75 of them appear *before* the
+  class they would refer to is declared, which the scheme forbids outright.
+  Real signal, wrong model.
+- **Values do not sit immediately after a class declaration.** Windows of 512
+  bytes after `moLengthParameter_c`, `moDisplayDistanceDim_c`,
+  `moDimTolerance_c`, `moView_c` and `moLayer_c` hold 4 to 13 float64 values
+  in engineering range, against a mean of 12.5 for random windows of the same
+  size. No enrichment at all.
+
+**So the class names say what is in the chunk, and not where.** That is the
+honest state: legible, not yet walkable.
+
+**What step 2 needs, and does not have.** Controlled input — two drawings of
+one part that differ in exactly one known way. The customer corpus holds 89
+drawings and they are all of different parts, so it cannot supply that pair.
+The nearest lever it does have: four drawings share a base part number, and
+two of them declare *exactly* the same 114 classes while differing in size by
+128 KB. Same record types, different content. That is the right shape for
+alignment work, even though the difference is not one known edit.
+
+**Blocked on Josh, not on effort.** A real controlled pair needs SolidWorks:
+open a drawing, save it, add one dimension, save it again. Two files, one
+known difference. That single pair is worth more than more scanning of the 89
+already in hand.
+
 ### D7 — What does the viewer feel like? `[prototype]`
 
 Tree, toolbar, measurement, section planes, exploded views, per-face
