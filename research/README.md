@@ -15,6 +15,7 @@ Run order, and what each one settles.
 | `d14-marker-scan.py` | Can the container's real structure be read directly, instead of scanning every byte for a compressed stream? (Yes — a documented open-source reader's chunk format, validated against every sample file: 2-95ms instead of 45-60s to several minutes.) |
 | `d22-definition-probe.py` | A drawing's real content sits in its `Contents/Definition` chunk. Is that chunk legible, or encoded a second time? (Legible — 3.2 bits of entropy per byte, and a self-describing object stream that writes all 132 of its own class names in plaintext.) |
 | `d22-value-locate.py` | The chunk cannot be walked, so where are its records? (Search for numbers printed on the drawing's own PDF. Found 4 of 7 against 0 of 7 decoys, and following one hit found 31 records at a fixed 612-byte stride.) Needs a PDF beside each drawing. |
+| `d22-record-layout.py` | The drawings resist every structural approach, so read the parts instead: a part's `Contents/Definition` is 5,440 bytes against a drawing's 786,808, in the same format. (Gives the first decoded record — `moANSI_c` is 18 bytes in all 186 files of all three kinds — and 73 classes with a fixed record size.) |
 
 ## Run the control first
 

@@ -860,6 +860,81 @@ this is a small errand rather than a free lookup.
 
 Next after that: `moView_c`, by the same anchoring.
 
+**Going after `moView_c` ruled out three more techniques, 2026-09-07 16:33.**
+All three had controls, and all three failed. Recorded so nobody rebuilds
+them:
+
+- **Matching positions from the PDF.** `pdftotext -bbox` gives every printed
+  word's box, and the page is exactly 1224x792 points, so 17x11 inches maps
+  1:1 to the sheet. Converting a dimension's printed position to metres and
+  searching for it should locate that dimension's record. It does not: real
+  numeric-word positions scored 20 of 23 and 9 of 13, and **random positions
+  inside the same sheet scored 18 of 23 and 11 of 13**. The chunk is dense
+  with doubles in the 0 to 0.5 range, so a 1 mm tolerance matches nearly
+  anything, and the tolerance cannot be tightened, because a text box centre
+  is not the anchor point the file stores.
+- **Aligning two drawings byte by byte.** They share only a **224-byte**
+  common prefix and a 167-byte common suffix, and just 9.5 percent of the
+  first 64 KB agrees across 12 drawings. Content and structure interleave
+  from the start, so byte offsets do not correspond between files.
+- **Aligning on the class declarations instead.** This should have worked,
+  since the declarations are structural landmarks. It cannot: **87 drawings
+  hold 86 distinct class sequences**, and the largest group sharing one
+  sequence is 2 files. Classes are declared where first encountered, so the
+  order follows the drawing's content. There is no stable skeleton to align.
+
+**One real positive came out of it: the chunk holds no model-space
+dimensions.** Searching for the part's own decoded extents found nothing in
+three drawings, at tolerances from 0.0001 percent up to 0.5 percent — and
+nothing for the decoys either, meaning the chunk simply has no values in that
+neighbourhood. Combined with D21 (the model's geometry lives in
+`Contents/VBLists`), that says `Contents/Definition` is drawing space only.
+Useful, because it rules out a whole family of anchors: model dimensions
+cannot be used to find anything in here.
+
+**So value anchoring on drawing-space constants is the only technique that has
+worked, and it is anchor-limited rather than effort-limited.** Every structural
+shortcut is now closed off. Two ways to get more anchors, in order of value:
+
+1. A drawing on a different sheet size, from any source. Confirms the sheet
+   record outright and gives a second point to fit the neighbouring fields.
+2. Better text out of the PDFs. `pdftotext` yields only 5 to 7 decimal numbers
+   per sheet, far fewer than a drawing visibly carries, so most printed
+   dimensions never become anchors at all. Worth checking whether they are
+   extractable another way before concluding the ceiling is real.
+
+**A third way opened, and it was the right one — 2026-09-07 16:38. Josh asked
+whether the SLDPRT beside each drawing helps. It does, and the reason is size.**
+Every structural route above failed on a drawing's 786 KB, 132-class chunk. A
+*part* has a `Contents/Definition` chunk too: **5,440 bytes and six classes**,
+the same container and the same MFC framing at one seventy-seventh the size.
+Those six classes are exactly the last six a drawing declares, so anything
+learned in the small file applies straight to the big one. And parts align
+where drawings do not — **53 of 62 share one class sequence**, against 86
+distinct sequences among 87 drawings.
+
+That makes the gap between consecutive class declarations measurable, and a
+gap that never moves is a fixed-size record. **The first completely decoded
+record in this format:**
+
+    moANSI_c: FF FF | schema 1 | name length 8 | "moANSI_c" | u32
+              14 bytes of declaration, a 4-byte body, 18 bytes in total
+
+**Confirmed in all 186 files across all three kinds** — 62 parts, 36
+assemblies, 88 drawings — gap exactly 18 every time, body always the u32 value
+7. Running it over the corpus reports **73 classes with a fixed record size**,
+including `moDrawing_c` (empty body, a pure marker), `moHeader_c` (157 bytes)
+and the whole unit-descriptor family at 62 or 64 bytes each.
+`research/d22-record-layout.py`.
+
+Two limits, both real. A gap that never changes is strong evidence and not
+proof: this corpus is one company's template, so a variable-length record
+holding identical content everywhere would look the same. `moANSI_c` is the
+solid one, because it holds across three *file types* rather than one
+template — treat a class seen only in drawings as likely, not settled. And
+size is not meaning: `moANSI_c`'s body is 7 in every file, so its type is
+confirmed and reading it as a drafting-standard selector is inference.
+
 ### D7 — What does the viewer feel like? `[prototype]`
 
 Tree, toolbar, measurement, section planes, exploded views, per-face
