@@ -772,10 +772,44 @@ two of them declare *exactly* the same 114 classes while differing in size by
 128 KB. Same record types, different content. That is the right shape for
 alignment work, even though the difference is not one known edit.
 
-**Blocked on Josh, not on effort.** A real controlled pair needs SolidWorks:
-open a drawing, save it, add one dimension, save it again. Two files, one
-known difference. That single pair is worth more than more scanning of the 89
-already in hand.
+**⚠️ SUPERSEDED 2026-09-07 16:04 — the paragraph below was wrong.** It said
+this needed SolidWorks to generate a controlled pair. Josh does not have
+SolidWorks, which forced a better idea: ground truth was already sitting in
+the corpus. See "Step 2 works after all", next.
+
+> **Blocked on Josh, not on effort.** A real controlled pair needs SolidWorks:
+> open a drawing, save it, add one dimension, save it again. Two files, one
+> known difference. That single pair is worth more than more scanning of the 89
+> already in hand.
+
+**Step 2 works after all, 2026-09-07 16:04 — anchor on values whose answer is
+already known.** Most drawings ship beside a PDF of themselves. Every decimal
+number printed on that sheet is a number SolidWorks itself wrote, so finding
+that exact number as a float in the chunk locates a real field. No controlled
+pair needed, and no walker either.
+
+It works, and the control is what proves it. Each true value is also searched
+for after multiplying by a random factor between 1.11 and 1.93. Across two
+drawings: 3 of 7 and 2 of 5 sheet numbers found as written, 4 of 7 and 1 of 5
+found again once converted from inches to metres, and **0 of 7 and 0 of 5
+decoys found in any unit**. No false positives at all.
+
+Following one hit found the first record structure in this chunk: **31 records
+at a fixed 612-byte stride, with 423 of the 612 byte positions holding the
+same value in every record.** The varying positions include a long
+`#.#.#.#.` run, the signature of UTF-16 text — a fixed-width description
+field. A stride that matched by chance looks completely different (15 constant
+positions out of 2,472, against 423 of 612), so the two separate cleanly, and
+the script rejects anything under 20 percent constant.
+
+Honest limit: that array sits under `moHoleWizardInfo_c`, so it is hole
+standards data, not the views and dimensions this project wants. It proves the
+method, not the payload. The second drawing found no array at all, so this
+locates fields where ground truth happens to reach and nowhere else.
+
+`research/d22-value-locate.py`. Next: get ground truth closer to the geometry —
+view scale and sheet size are both printed in the title block and both should
+appear near `moView_c`.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 

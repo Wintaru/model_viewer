@@ -264,12 +264,19 @@ def check_class_tags(chunk: bytes, runs) -> tuple[int, set[int]]:
     return matched, schemas
 
 
-if len(sys.argv) < 2:
-    print(__doc__)
-    sys.exit(1)
-for arg in sys.argv[1:]:
-    target = pathlib.Path(arg)
-    if target.exists():
-        describe(target)
-    else:
-        print(f"not found: {arg}")
+def main() -> None:
+    if len(sys.argv) < 2:
+        print(__doc__)
+        sys.exit(1)
+    for arg in sys.argv[1:]:
+        target = pathlib.Path(arg)
+        if target.exists():
+            describe(target)
+        else:
+            print(f"not found: {arg}")
+
+
+# Guarded so d22-value-locate.py can import parse_modern_format and
+# ascii_runs from here instead of duplicating them.
+if __name__ == "__main__":
+    main()
