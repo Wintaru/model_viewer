@@ -296,36 +296,6 @@ scope by absence of a decision, not by absence of a path. See D12.
   consistent shading. Whole NIST corpus: vertex/triangle counts and the
   STEP-bounding-box check are both unaffected (this only changes normal
   *values*, never positions or topology), so nothing regressed.
-- **D18 — A second, distinct wrong-normal defect: some vertices carry a
-  real (non-zero) normal borrowed from a different, connected face,
-  2026-09-07.** Josh pushed back again after D17 shipped — correctly, a
-  second time: new arrows on new faces still showed wrong (not dim)
-  shading. On every geometrically flat block in the real customer part (no
-  curvature to justify any variation), 219 of 305 vertices stored a normal
-  sitting ~90 degrees off their own face's true direction — in-plane, not
-  perpendicular. 215 of those 219 (98%) turned out to exactly match some
-  *other*, connected face's true normal elsewhere on the same part — the
-  faces meet at a bend, so one face's real normal lies exactly in the
-  other's plane, which is what made this look like in-plane noise until
-  checked against neighboring faces specifically. Same footprint as D17:
-  only a strip's first vertex, sometimes its second, is ever spared.
-
-  Fixed with a second repair pass, `repairMismatchedFlatNormals`: for any
-  vertex whose touching triangles geometrically agree on one direction
-  (flat neighbourhood, so there's exactly one right answer), replace the
-  stored normal if it disagrees by more than 30 degrees. A vertex on a
-  genuinely curved patch is never touched, by construction. Verified
-  against the real, shipped decoder (not a reimplementation): 305 flat-
-  neighbourhood vertices, 0 remaining mismatches (was 219). See
-  `DECISIONS.md`'s D18 entry for the two hypotheses checked and ruled out
-  (edge/tangent-vector leakage; coincidental match from a small direction
-  palette) before landing on the real explanation. A code-review pass
-  caught one real gap before this shipped: a vertex touched by only one
-  triangle was being trusted as "flat" with zero corroborating evidence,
-  risking the inverse mistake (overwriting a legitimately curved normal at
-  a strip boundary). Fixed by requiring at least two agreeing triangles;
-  the real file's own defect never needed the single-triangle case, so
-  nothing regressed.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP
   bounding box. **Updated 2026-09-07 — see D16, above: now 7 of 11**, after

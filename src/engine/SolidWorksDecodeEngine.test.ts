@@ -263,61 +263,6 @@ describe("decodeTessDataStream", () => {
     expect(mesh.normals[2]).toBe(0);
   });
 
-  it("repairs a non-zero normal borrowed from a different, perpendicular face", () => {
-    // A second, distinct real-part defect (DECISIONS.md's D18): unlike the
-    // zero-length case above, some vertices carry a unit-length normal
-    // that is still wrong -- pointing in-plane instead of perpendicular to
-    // it, matching a *different*, connected face's true normal instead of
-    // this flat quad's own. Flat quad in the XY plane again (true normal
-    // +Z); vertex 2's stored normal is +X, as if borrowed from a
-    // perpendicular wall.
-    const positions = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0];
-    const normals = [0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1];
-    const block = buildTessellationBlock([4], positions, normals);
-
-    const mesh = decodeTessDataStream(block);
-
-    expect(Array.from(mesh.normals)).toEqual([
-      0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
-    ]);
-  });
-
-  it("leaves a stored normal alone when its own neighbourhood is genuinely curved", () => {
-    // Vertex 2 sits on a real fold here (vertex 3 lifted out of the plane),
-    // so its two touching triangles disagree on direction by more than the
-    // flat-neighbourhood tolerance. There is no independent way to tell a
-    // legitimate smoothly-blended normal from a wrong one in that case, so
-    // even a normal that looks equally "wrong" as the case above must be
-    // left exactly as stored.
-    const positions = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0.8];
-    const normals = [0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1];
-    const block = buildTessellationBlock([4], positions, normals);
-
-    const mesh = decodeTessDataStream(block);
-
-    expect(mesh.normals[6]).toBe(1);
-    expect(mesh.normals[7]).toBe(0);
-    expect(mesh.normals[8]).toBe(0);
-  });
-
-  it("leaves a vertex touched by only one triangle alone, even if that triangle disagrees with it", () => {
-    // Vertex 3 here touches exactly one triangle (the lifted one from the
-    // fold above), which -- on its own -- can never corroborate whether a
-    // disagreement is a real defect or legitimate curvature continuing
-    // past this strip's edge (the common case at a strip's last vertex, or
-    // a seam between two separately-decoded blocks). One triangle is not
-    // enough evidence to overwrite anything.
-    const positions = [0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0.8];
-    const normals = [0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 0, 1];
-    const block = buildTessellationBlock([4], positions, normals);
-
-    const mesh = decodeTessDataStream(block);
-
-    expect(mesh.normals[9]).toBe(0);
-    expect(mesh.normals[10]).toBe(0);
-    expect(mesh.normals[11]).toBe(1);
-  });
-
   it("finds nothing in bytes with no valid tessellation header", () => {
     const mesh = decodeTessDataStream(new Uint8Array(1_000));
 
