@@ -56,7 +56,6 @@ import { DxfDecodeEngineProxy } from "../src/engine/DxfDecodeEngineProxy";
 import { OcctDecodeEngineProxy } from "../src/engine/OcctDecodeEngineProxy";
 import { SolidWorksDecodeEngineProxy } from "../src/engine/SolidWorksDecodeEngineProxy";
 import { frameOrthographicCamera, toThreeDrawing } from "../src/2d/index";
-import { repairSmallGaps } from "../src/repair/index";
 import { toThree } from "../src/three/index";
 
 const STEP_WASM_URL = "occt-import-js.wasm";
@@ -336,7 +335,6 @@ function main(): void {
   const dropZone = requiredElement<HTMLElement>("drop-zone");
   const clearButton = requiredElement<HTMLButtonElement>("clear-button");
   const renderModeSelect = requiredElement<HTMLSelectElement>("render-mode");
-  const repairButton = requiredElement<HTMLButtonElement>("repair-button");
   const viewport = requiredElement<HTMLElement>("viewport");
 
   const loader = new ModelLoader(
@@ -373,8 +371,6 @@ function main(): void {
   let content: Object3D | undefined;
   let shapeMeshEntries: ShapeMeshEntry[] = [];
   let renderMode: RenderMode = "solid";
-  let currentModel: DecodedModel | undefined;
-  let currentFileName: string | undefined;
 
   function clear(): void {
     if (content !== undefined) {
@@ -384,9 +380,6 @@ function main(): void {
     }
     shapeMeshEntries = [];
     renderModeSelect.disabled = true;
-    currentModel = undefined;
-    currentFileName = undefined;
-    repairButton.disabled = true;
     controls.dispose();
     camera = defaultCamera();
     controls = new OrbitControls(camera, renderer.domElement);
@@ -400,8 +393,6 @@ function main(): void {
       disposeObject3D(content);
     }
     controls.dispose();
-    currentModel = model;
-    currentFileName = name;
 
     const drawing = isDrawing(model);
     let target: Vector3;
@@ -431,9 +422,6 @@ function main(): void {
     // silently do nothing.
     shapeMeshEntries = drawing ? [] : buildShapeMeshEntries(content);
     renderModeSelect.disabled = drawing;
-    // repairSmallGaps operates on triangle-mesh surfaces; a drawing's
-    // LineSegments have no concept of a surface gap (WAYFINDER.md D15).
-    repairButton.disabled = drawing;
     applyRenderMode(shapeMeshEntries, renderMode);
 
     controls = new OrbitControls(camera, renderer.domElement);
@@ -488,29 +476,6 @@ function main(): void {
       renderMode = renderModeSelect.value;
       applyRenderMode(shapeMeshEntries, renderMode);
     }
-  });
-
-  repairButton.addEventListener("click", () => {
-    if (currentModel === undefined || currentFileName === undefined) {
-      return;
-    }
-    // The library's own default (5%) is deliberately conservative for a
-    // caller who never thinks about it; this demo button is a consciously
-    // chosen, inspectable, reversible ("Clear" and reload) action, so it
-    // affords a more generous cap -- 15% was verified by hand (this
-    // session, DECISIONS.md) to close real gaps a real customer SolidWorks
-    // file (customer part A) had, which the library default alone
-    // left all six of unpatched.
-    showModel(
-      repairSmallGaps(currentModel, { maxRelativeGapSize: 0.15 }),
-      currentFileName,
-    );
-    // repairSmallGaps appends to diagnostics rather than replacing them, so
-    // a second click on the same (already-repaired) model would re-flag
-    // whatever it already correctly left alone, piling up duplicate
-    // "too large"/"ambiguous" messages — disable until a new file resets
-    // this through showModel's own enabling logic above.
-    repairButton.disabled = true;
   });
 
   for (const eventName of ["dragenter", "dragover"]) {

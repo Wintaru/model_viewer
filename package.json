@@ -23,10 +23,6 @@
     "./2d": {
       "types": "./dist/2d/index.d.ts",
       "default": "./dist/2d/index.js"
-    },
-    "./repair": {
-      "types": "./dist/repair/index.d.ts",
-      "default": "./dist/repair/index.js"
     }
   },
   "files": [

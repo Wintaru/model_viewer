@@ -238,6 +238,17 @@ scope by absence of a decision, not by absence of a path. See D12.
   default: a consciously-invoked, visually-inspectable, reversible (reload
   the file) action affords more latitude than a default a caller might never
   look at twice.
+
+  **Reverted 2026-09-07 09:46.** The blanket rule — cap any small boundary
+  loop — turned out unsound: on the real file it also capped a bolt hole that
+  has to stay open, and nothing in a boundary loop's shape alone
+  distinguishes a real opening from an unwanted seam gap. `git revert`
+  removed `src/repair/index.ts` and its test; the `/repair` adapter, its
+  dependency-cruiser rule, its `package.json` export and its
+  `ARCHITECTURE.md` mention are gone with it. The actual root causes behind
+  the real visual gaps this was built to paper over turned out to be two
+  separate decoder bugs, found and fixed properly instead — see D16 and D17,
+  next.
 - **D16 — The unit-normal-ratio validity check was too strict, silently
   dropping real curved-surface tessellation blocks, 2026-09-07.** Grew out
   of investigating the same `customer part A` gaps D15 tried (and
