@@ -1,0 +1,45 @@
+name: Format support
+description: Ask for a format, or for more of a format that already partly works.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read the support table in `README.md` first. Several formats work only
+        in part, and the table says which part. OBJ, PLY, glTF, and 3MF are
+        planned and not built.
+
+        Do not attach a CAD file. See the bug report template for why.
+
+  - type: input
+    id: format
+    attributes:
+      label: Which format, or which part of one?
+      placeholder: ASCII STL, or DXF block references (INSERT)
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What are you trying to do?
+      description: >
+        Describe the task, not only the format. A viewer, a thumbnail, a
+        measurement, and a conversion each need different things from the
+        decoder, and that changes what "supported" has to mean.
+    validations:
+      required: true
+
+  - type: textarea
+    id: samples
+    attributes:
+      label: Can you point to a public sample file?
+      description: >
+        A link to a file anyone can download is the single most useful thing
+        in this report. Without one, nothing can be verified, and this project
+        does not claim support it cannot verify. Do not attach your own file.
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What do you do today instead?

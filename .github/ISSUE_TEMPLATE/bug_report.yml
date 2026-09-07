@@ -1,0 +1,91 @@
+name: Bug report
+description: A file does not open, or the result is wrong.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Do not attach your CAD file
+
+        A CAD file carries more than geometry. A SolidWorks file stores folder
+        paths, user names, and part numbers as plain text. A STEP file stores
+        an author name and an originating system. Attach one to a public issue
+        and you publish all of it.
+
+        Please describe the file instead. The questions below ask for the
+        facts that help, and for none of the content. If a maintainer needs
+        more, they will ask.
+
+        If the file is public already — a NIST test part, or a sample from a
+        vendor — say which one. That is the most useful report of all, because
+        anyone can reproduce it.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+      placeholder: |
+        I called loader.load(file) on a SolidWorks part. It returned a model
+        with no meshes and one diagnostic with the code no-tessdata-found. I
+        expected the part to open, because SolidWorks itself shows it.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: format
+    attributes:
+      label: File format
+      options:
+        - SolidWorks part (.SLDPRT)
+        - SolidWorks assembly (.SLDASM)
+        - STEP (.stp, .step)
+        - IGES (.igs, .iges)
+        - STL (.stl)
+        - DXF (.dxf)
+        - Other, or I do not know
+    validations:
+      required: true
+
+  - type: input
+    id: producer
+    attributes:
+      label: Which program wrote the file, and which version?
+      description: >
+        For SolidWorks this matters more than anything else. Only SolidWorks
+        2018 is verified. Read it from File, then Properties, in SolidWorks.
+      placeholder: SolidWorks 2024 SP2
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: >
+        Paste `model.diagnostics` from the returned model. The library reports
+        a failure there instead of throwing. Codes and messages are safe to
+        share. They hold no file content.
+      render: json
+
+  - type: input
+    id: version
+    attributes:
+      label: Library version
+      placeholder: 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Browser and bundler
+      placeholder: Chrome 141, Vite 7
+
+  - type: checkboxes
+    id: confidentiality
+    attributes:
+      label: Before you send this
+      options:
+        - label: >
+            I have attached no CAD file, and I have pasted no decoded output
+            from one.
+          required: true

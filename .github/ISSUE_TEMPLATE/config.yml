@@ -1,0 +1,17 @@
+blank_issues_enabled: true
+contact_links:
+  - name: What is verified, and what is not
+    url: https://github.com/Wintaru/model_viewer#what-is-verified-and-what-is-not
+    about: >
+      Read this before you report that a file does not open. Several formats
+      work only in part, and the README says which part.
+  - name: Open design decisions
+    url: https://github.com/Wintaru/model_viewer/blob/main/WAYFINDER.md
+    about: >
+      Questions this project has already asked and answered, and the ones
+      still open. Check here before you propose a direction.
+  - name: Report a security problem privately
+    url: https://github.com/Wintaru/model_viewer/security/advisories/new
+    about: >
+      Use this instead of a public issue for anything that could put a user's
+      files or browser at risk.
