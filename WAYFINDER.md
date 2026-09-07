@@ -367,6 +367,52 @@ scope by absence of a decision, not by absence of a path. See D12.
   for the full investigation, including the two hypotheses (edge/tangent-
   vector leakage; coincidental match from a small direction palette)
   checked and ruled out before finding the real cause.
+- **D19 — "Missing faces" on a second real customer part had two unrelated
+  causes: a tail-marker parsing collision, and genuinely reversed winding
+  in the source data, 2026-09-07.** Josh reported `customer part B`
+  rendering with visible black gaps through solid-looking walls, and asked
+  for the whole 62-file customer corpus (`the customer corpus`) to
+  be swept, not just this one file fixed.
+
+  **Cause 1, a real parsing bug:** the tail layout `a, b, 2, TOTAL` was
+  matched on `TOTAL`'s value alone, without checking that the literal `2`
+  actually precedes it. Three of this file's blocks have a vertex total of
+  exactly `12` — the same value as `a`, the tail's own leading constant —
+  so the search locked onto that earlier word instead of the real total,
+  silently shifting where position/normal floats were read from for those
+  blocks. Fixed by requiring the literal `2` immediately before the match
+  in `findWordAfterTotalMarker` (`SolidWorksDecodeEngine.ts`), with the
+  identical fix applied to `research/d9-decode.py`'s `_scan`. Verified via
+  a directed-edge winding-consistency check (catches a shared edge two
+  triangles traverse the *same* direction, which a plain edge-count check
+  can't see): 0 non-manifold/flipped edges after, was 4/14; the known-good
+  `customer part A` unaffected throughout.
+
+  **Cause 2, found only by sweeping the whole corpus:** even after fixing
+  Cause 1, 19 of 62 files still carried flipped-winding edges (up to 51 on
+  one file) — traced to blocks whose tail words are completely well-formed,
+  meaning the winding really is reversed in SolidWorks's own cached data
+  (most likely a reversed-sense face in the underlying BREP). No parsing
+  fix can distinguish this from a correctly-wound strip. Rejected
+  propagating a canonical orientation via a cross-block BFS (the standard
+  mesh-cleanup technique) — D18 already measured real cross-contamination
+  from cross-block adjacency on complex parts, and rebuilding that same
+  graph a second time for winding reintroduces the identical risk for
+  comparatively little gain. Fixed one layer up instead: `src/three/
+  index.ts`'s `materialFor` now renders `side: THREE.DoubleSide` rather
+  than the (default) `FrontSide` — matching a choice the standalone
+  `demo/viewer.html` demo already made — so backface culling can no longer
+  hide correctly-positioned geometry just because its winding is
+  backwards. Costs nothing visually on already-correct geometry (a closed
+  solid's back side stays hidden behind its own front faces either way).
+
+  Verified end to end: all 62 corpus files decode through the real
+  `SolidWorksDecodeEngine.transform` with no diagnostics and non-zero
+  triangle output; three files spanning both defect classes confirmed
+  visually in a real browser (Playwright) rendering as complete, gap-free
+  solids. Full verify green (tsc, eslint, depcruise, prettier, vitest — 218
+  tests). See DECISIONS.md for the instrumentation approach and full
+  detail.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP
   bounding box. **Updated 2026-09-07 — see D16, above: now 7 of 11**, after

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { Matrix4, Mesh, MeshStandardMaterial, type Object3D } from "three";
+import {
+  DoubleSide,
+  Matrix4,
+  Mesh,
+  MeshStandardMaterial,
+  type Object3D,
+} from "three";
 import { toThree } from "./index";
 import type { DecodedMesh, DecodedModel, SceneNode } from "../common";
 
@@ -151,6 +157,23 @@ describe("toThree", () => {
     const meshObject = meshChildAt(root.children[0] ?? root, 0);
     const material = meshObject.material as MeshStandardMaterial;
     expect(material.color.getHex()).toBe(0x9a9a9a);
+  });
+
+  it("renders both sides of every triangle, not just the winding-order front", () => {
+    // A tessellation cache's own per-strip winding isn't always trustworthy
+    // as globally consistent (DECISIONS.md D19) -- FrontSide's backface
+    // culling would otherwise make a reversed-winding block vanish even
+    // though its geometry is present and correctly positioned.
+    const model = modelWith(
+      [unitTriangleMesh()],
+      [{ meshIndices: [0], children: [] }],
+    );
+
+    const root = toThree(model);
+
+    const meshObject = meshChildAt(root.children[0] ?? root, 0);
+    const material = meshObject.material as MeshStandardMaterial;
+    expect(material.side).toBe(DoubleSide);
   });
 
   it("uses the mesh's own colour when one is given", () => {

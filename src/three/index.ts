@@ -2,6 +2,7 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  DoubleSide,
   Group,
   Mesh,
   MeshStandardMaterial,
@@ -96,9 +97,23 @@ function buildMaterials(
   return materials;
 }
 
+/**
+ * Renders both sides of every triangle, not just the side its winding order
+ * calls "front" — a tessellation cache's own per-strip winding can't always
+ * be trusted as globally consistent (DECISIONS.md: real SolidWorks parts
+ * were found with individual strips whose winding is genuinely reversed
+ * relative to their neighbours, a real per-face orientation choice in the
+ * source data, not a bug in reading it). Backface culling would otherwise
+ * make exactly those faces vanish — geometry present and correctly
+ * positioned, just facing "the wrong way" — which reads as a missing panel
+ * or a hole punched through solid material. Two-sided rendering sidesteps
+ * needing to know, block by block, which winding is "correct": a properly
+ * enclosed solid looks identical either way, since the far side of a closed
+ * shape is already hidden behind its own near side.
+ */
 function materialFor(color: DecodedMesh["color"]): Material {
   if (color === undefined) {
-    return new MeshStandardMaterial({ color: DEFAULT_COLOR });
+    return new MeshStandardMaterial({ color: DEFAULT_COLOR, side: DoubleSide });
   }
   // DecodedMesh.color/FaceRange.color are sRGB, matching how CAD/STEP
   // presentation colour is authored — not three.js's own working colour
@@ -109,5 +124,6 @@ function materialFor(color: DecodedMesh["color"]): Material {
   // renderer needs. See DECISIONS.md.
   return new MeshStandardMaterial({
     color: new Color().setRGB(color[0], color[1], color[2], SRGBColorSpace),
+    side: DoubleSide,
   });
 }
