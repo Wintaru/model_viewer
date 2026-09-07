@@ -1,8 +1,10 @@
 /**
- * A minimal ambient declaration for the one Node builtin this repository's
- * tests need — reading a real fixture file from disk (`assets/step/*.stp`
- * for `OcctDecodeEngine.test.ts`, and `occt-import-js`'s own `.wasm`
- * binary from `node_modules`).
+ * A minimal ambient declaration for the two Node builtins this repository's
+ * tests need. `readFileSync` reads a real fixture file from disk
+ * (`assets/step/*.stp` for `OcctDecodeEngine.test.ts`, and `occt-import-js`'s
+ * own `.wasm` binary from `node_modules`). `existsSync` asks whether the test
+ * corpus was fetched at all: it is not in git, so a case that needs it skips
+ * rather than fails on a fresh clone — see any `itWithCorpus` in the tests.
  *
  * Written by hand instead of adding `@types/node` as a dependency. This is
  * a browser-only library (CLAUDE.md, ARCHITECTURE.md), and `@types/node`
@@ -30,4 +32,5 @@
  */
 declare module "node:fs" {
   export function readFileSync(path: string): Uint8Array<ArrayBuffer>;
+  export function existsSync(path: string): boolean;
 }

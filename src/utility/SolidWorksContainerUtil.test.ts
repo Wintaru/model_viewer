@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { deflateRaw } from "pako";
 import { describe, expect, it } from "vitest";
 import { extractModernContainerChunks } from "./SolidWorksContainerUtil.js";
@@ -12,6 +12,15 @@ const REFERENCE_F1 = 1;
 function readSldprt(name: string): Uint8Array {
   return readFileSync(`${SOLIDWORKS_DIR}/${name}`);
 }
+
+// The test corpus is not in git — `pnpm assets` fetches it (assets/README.md).
+// A case that needs it skips when it is absent, rather than failing, so a
+// fresh clone can run `pnpm test` and get a meaningful result. CI restores the
+// corpus from cache and fetches it on a miss, so these cases really do run
+// there — see .github/workflows/ci.yml.
+const itWithCorpus = it.skipIf(
+  !existsSync(`${SOLIDWORKS_DIR}/nist_ctc_01_asme1_rd_sw1802.SLDPRT`),
+);
 
 /** The exact inverse of production's rotate-left name cipher. */
 function rotateRightByte(byte: number, bits: number): number {
@@ -156,18 +165,21 @@ describe("extractModernContainerChunks", () => {
     expect(extractModernContainerChunks(bytes)).toEqual([]);
   });
 
-  it("finds the same TessData-bearing stream in a real NIST part that extractTessDataStreams's brute-force scan already verifies byte-for-byte", () => {
-    const chunks = extractModernContainerChunks(
-      readSldprt("nist_ctc_01_asme1_rd_sw1802.SLDPRT"),
-    );
+  itWithCorpus(
+    "finds the same TessData-bearing stream in a real NIST part that extractTessDataStreams's brute-force scan already verifies byte-for-byte",
+    () => {
+      const chunks = extractModernContainerChunks(
+        readSldprt("nist_ctc_01_asme1_rd_sw1802.SLDPRT"),
+      );
 
-    const tessDataChunks = chunks.filter((chunk) =>
-      new TextDecoder().decode(chunk.data).includes("TessData"),
-    );
-    expect(tessDataChunks).toHaveLength(1);
-    expect(tessDataChunks[0]?.name).toBe("Contents/DisplayLists");
-    expect(tessDataChunks[0]?.data).toHaveLength(287_403);
-  });
+      const tessDataChunks = chunks.filter((chunk) =>
+        new TextDecoder().decode(chunk.data).includes("TessData"),
+      );
+      expect(tessDataChunks).toHaveLength(1);
+      expect(tessDataChunks[0]?.name).toBe("Contents/DisplayLists");
+      expect(tessDataChunks[0]?.data).toHaveLength(287_403);
+    },
+  );
   // No extended timeout needed — this is the entire point of D14: this
   // real file parses in single-digit milliseconds now, not 45-60 seconds.
 });

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   WasmAssetAccessor,
@@ -45,8 +45,22 @@ function readIgesFile(name: string): Uint8Array {
 // default 5s test timeout isn't always enough headroom on a loaded machine.
 const OCCT_TEST_TIMEOUT_MS = 20_000;
 
+// The test corpus is not in git — `pnpm assets` fetches it (assets/README.md).
+// A case that needs it skips when it is absent, rather than failing, so a
+// fresh clone can run `pnpm test` and get a meaningful result. CI fails when
+// anything skips, so these cases really do run there — see
+// .github/workflows/ci.yml and scripts/check-no-skipped-tests.mjs.
+//
+// STEP and IGES get separate guards because scripts/fetch-assets.sh downloads
+// them under separate conditions. One guard covering both would crash on an
+// ENOENT exactly where it was supposed to skip.
+const itWithStepCorpus = it.skipIf(
+  !existsSync(`${STEP_DIR}/nist_ctc_01_asme1_rd.stp`),
+);
+const itWithIgesCorpus = it.skipIf(!existsSync(`${IGES_DIR}/ex1.iges`));
+
 describe("OcctDecodeEngine", () => {
-  it(
+  itWithStepCorpus(
     "decodes a real STEP file's geometry",
     async () => {
       const engine = new OcctDecodeEngine(realWasmAssets());
@@ -83,7 +97,7 @@ describe("OcctDecodeEngine", () => {
     OCCT_TEST_TIMEOUT_MS,
   );
 
-  it(
+  itWithStepCorpus(
     "reports occt-empty-result for a success-but-zero-mesh file",
     async () => {
       const engine = new OcctDecodeEngine(realWasmAssets());
@@ -107,7 +121,7 @@ describe("OcctDecodeEngine", () => {
     OCCT_TEST_TIMEOUT_MS,
   );
 
-  it(
+  itWithStepCorpus(
     "reports occt-read-failed when OCCT throws reading a file it can't parse",
     async () => {
       const engine = new OcctDecodeEngine(realWasmAssets());
@@ -175,7 +189,7 @@ describe("OcctDecodeEngine", () => {
     OCCT_TEST_TIMEOUT_MS,
   );
 
-  it(
+  itWithIgesCorpus(
     "recognizes real IGES files and reports occt-empty-result for them",
     async () => {
       // assets/iges (research/FINDINGS.md section 10, WAYFINDER.md's IGES
@@ -204,7 +218,7 @@ describe("OcctDecodeEngine", () => {
     OCCT_TEST_TIMEOUT_MS,
   );
 
-  it(
+  itWithStepCorpus(
     "reuses one occt-import-js instance across repeated transform calls",
     async () => {
       let readCount = 0;

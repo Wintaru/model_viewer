@@ -41,7 +41,8 @@
     "check:dist": "node scripts/check-dist.mjs",
     "build:demo": "node scripts/build-library-demo.mjs",
     "serve:demo": "python3 -m http.server 8000 --directory demo",
-    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run test"
+    "verify": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run test",
+    "test:strict": "node scripts/check-no-skipped-tests.mjs"
   },
   "dependencies": {
     "occt-import-js": "^0.0.23",
