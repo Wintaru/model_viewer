@@ -1,15 +1,15 @@
-import type { FormatId } from "../common/FormatId";
+import type { FormatId } from "../common/FormatId.js";
 import {
   isAsciiWhitespace,
   looksLikeStepFile,
   skipLeadingAsciiWhitespace,
   startsWithAscii,
   startsWithAsciiCaseInsensitive,
-} from "../utility/AsciiUtil";
+} from "../utility/AsciiUtil.js";
 import {
   readFixedRecordCount,
   type FixedRecordLayout,
-} from "../utility/BinaryLayoutUtil";
+} from "../utility/BinaryLayoutUtil.js";
 
 const DXF_SECTION_KEYWORD = "SECTION";
 const ASCII_ZERO = 0x30;

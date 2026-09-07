@@ -1,9 +1,9 @@
-import type { DecodedModel } from "../common/DecodedModel";
+import type { DecodedModel } from "../common/DecodedModel.js";
 import type {
   RequestEnvelope,
   ResponseEnvelope,
-} from "../utility/WorkerTransport";
-import { SolidWorksDecodeEngine } from "./SolidWorksDecodeEngine";
+} from "../utility/WorkerTransport.js";
+import { SolidWorksDecodeEngine } from "./SolidWorksDecodeEngine.js";
 
 /**
  * The worker-side half of `SolidWorksDecodeEngineProxy`'s bridge

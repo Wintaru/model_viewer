@@ -1,4 +1,4 @@
-import type { DecodedModel } from "../common/DecodedModel";
+import type { DecodedModel } from "../common/DecodedModel.js";
 
 /**
  * Answers `Load` and `Store` for a previously decoded model —

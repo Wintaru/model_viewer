@@ -1,9 +1,9 @@
-import type { DecodedMesh } from "../common/DecodedMesh";
+import type { DecodedMesh } from "../common/DecodedMesh.js";
 import {
   createEmptyDecodedModel,
   type DecodedModel,
-} from "../common/DecodedModel";
-import { extractModernContainerChunks } from "../utility/SolidWorksContainerUtil";
+} from "../common/DecodedModel.js";
+import { extractModernContainerChunks } from "../utility/SolidWorksContainerUtil.js";
 
 const TESS_DATA_MAGIC = "TessData";
 // An assembly's own `Contents/DisplayLists` chunk does carry the `TessData`

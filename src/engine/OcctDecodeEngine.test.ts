@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   WasmAssetAccessor,
   type FetchLike,
-} from "../accessor/WasmAssetAccessor";
-import { OcctDecodeEngine } from "./OcctDecodeEngine";
+} from "../accessor/WasmAssetAccessor.js";
+import { OcctDecodeEngine } from "./OcctDecodeEngine.js";
 
 // A real network fetch can't load a file:// path, and this repo's tests
 // run under Node (no jsdom), so the real wasm bytes are read from disk and

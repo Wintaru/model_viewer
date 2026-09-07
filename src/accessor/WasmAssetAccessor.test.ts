@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WasmAssetAccessor, type FetchLike } from "./WasmAssetAccessor";
+import { WasmAssetAccessor, type FetchLike } from "./WasmAssetAccessor.js";
 
 function fakeFetch(
   response: Partial<Awaited<ReturnType<FetchLike>>> & { readonly ok: boolean },

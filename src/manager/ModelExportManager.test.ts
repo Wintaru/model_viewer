@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createEmptyDecodedModel } from "../common/DecodedModel";
-import { ModelExportManager } from "./ModelExportManager";
+import { createEmptyDecodedModel } from "../common/DecodedModel.js";
+import { ModelExportManager } from "./ModelExportManager.js";
 
 const model = createEmptyDecodedModel({
   severity: "error",

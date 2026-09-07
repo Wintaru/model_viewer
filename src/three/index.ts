@@ -9,7 +9,7 @@ import {
   SRGBColorSpace,
   type Material,
 } from "three";
-import type { DecodedMesh, DecodedModel, SceneNode } from "../common";
+import type { DecodedMesh, DecodedModel, SceneNode } from "../common/index.js";
 
 /** Plain mid-grey. Used whenever a mesh or face carries no CAD colour. */
 const DEFAULT_COLOR = 0x9a9a9a;

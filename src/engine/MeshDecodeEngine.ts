@@ -1,14 +1,14 @@
-import type { DecodedMesh } from "../common/DecodedMesh";
+import type { DecodedMesh } from "../common/DecodedMesh.js";
 import {
   createEmptyDecodedModel,
   type DecodedModel,
-} from "../common/DecodedModel";
-import type { Diagnostic } from "../common/Diagnostic";
-import { startsWithAsciiCaseInsensitive } from "../utility/AsciiUtil";
+} from "../common/DecodedModel.js";
+import type { Diagnostic } from "../common/Diagnostic.js";
+import { startsWithAsciiCaseInsensitive } from "../utility/AsciiUtil.js";
 import {
   readFixedRecordCount,
   type FixedRecordLayout,
-} from "../utility/BinaryLayoutUtil";
+} from "../utility/BinaryLayoutUtil.js";
 
 const STL_LAYOUT: FixedRecordLayout = { headerSize: 80, recordSize: 50 };
 const RECORD_COUNT_FIELD_SIZE = 4;

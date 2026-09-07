@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromFile } from "./FileSourceAccessor";
+import { fromFile } from "./FileSourceAccessor.js";
 
 describe("fromFile", () => {
   it("reads back the same bytes given a File", async () => {

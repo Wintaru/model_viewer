@@ -1,6 +1,6 @@
-import type { DecodedMesh } from "./DecodedMesh";
-import type { Diagnostic } from "./Diagnostic";
-import type { SceneNode } from "./SceneNode";
+import type { DecodedMesh } from "./DecodedMesh.js";
+import type { Diagnostic } from "./Diagnostic.js";
+import type { SceneNode } from "./SceneNode.js";
 
 /**
  * The one thing every layer shares — renderer-agnostic by design. See

@@ -1,4 +1,4 @@
-import type { ModelSource } from "./ModelSource";
+import type { ModelSource } from "./ModelSource.js";
 
 /**
  * A {@link ModelSource} over a `File` or `Blob`. Built with {@link fromFile}

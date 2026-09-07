@@ -6,8 +6,8 @@ import {
   MeshStandardMaterial,
   type Object3D,
 } from "three";
-import { toThree } from "./index";
-import type { DecodedMesh, DecodedModel, SceneNode } from "../common";
+import { toThree } from "./index.js";
+import type { DecodedMesh, DecodedModel, SceneNode } from "../common/index.js";
 
 function unitTriangleMesh(overrides: Partial<DecodedMesh> = {}): DecodedMesh {
   return {

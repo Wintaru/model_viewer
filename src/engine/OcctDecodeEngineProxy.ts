@@ -1,5 +1,8 @@
-import type { DecodedModel } from "../common/DecodedModel";
-import { WorkerTransport, type WorkerLike } from "../utility/WorkerTransport";
+import type { DecodedModel } from "../common/DecodedModel.js";
+import {
+  WorkerTransport,
+  type WorkerLike,
+} from "../utility/WorkerTransport.js";
 
 /**
  * What one `transform` call sends to `occt.worker.ts`. Not shared by

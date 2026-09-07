@@ -1,6 +1,6 @@
 import { deflate, deflateRaw } from "pako";
 import { describe, expect, it } from "vitest";
-import { tryInflateRaw, tryInflateZlib } from "./InflateUtil";
+import { tryInflateRaw, tryInflateZlib } from "./InflateUtil.js";
 
 function payload(length: number): Uint8Array {
   // Repeating, non-trivial bytes — long enough that a real deflate stream

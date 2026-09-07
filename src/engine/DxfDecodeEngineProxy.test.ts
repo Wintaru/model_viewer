@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import type { DecodedModel } from "../common/DecodedModel";
+import type { DecodedModel } from "../common/DecodedModel.js";
 import type {
   RequestEnvelope,
   ResponseEnvelope,
   WorkerLike,
-} from "../utility/WorkerTransport";
+} from "../utility/WorkerTransport.js";
 import {
   DxfDecodeEngineProxy,
   type DxfDecodeRequest,
-} from "./DxfDecodeEngineProxy";
+} from "./DxfDecodeEngineProxy.js";
 
 class FakeWorker implements WorkerLike {
   onmessage: ((event: MessageEvent) => void) | null = null;

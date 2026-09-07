@@ -4,15 +4,15 @@ import occtimportjs, {
   type OcctModule,
   type OcctNode,
 } from "occt-import-js";
-import type { WasmAssetAccessor } from "../accessor/WasmAssetAccessor";
-import type { DecodedMesh } from "../common/DecodedMesh";
+import type { WasmAssetAccessor } from "../accessor/WasmAssetAccessor.js";
+import type { DecodedMesh } from "../common/DecodedMesh.js";
 import {
   createEmptyDecodedModel,
   type DecodedModel,
-} from "../common/DecodedModel";
-import type { FaceRange } from "../common/FaceRange";
-import type { SceneNode } from "../common/SceneNode";
-import { looksLikeStepFile } from "../utility/AsciiUtil";
+} from "../common/DecodedModel.js";
+import type { FaceRange } from "../common/FaceRange.js";
+import type { SceneNode } from "../common/SceneNode.js";
+import { looksLikeStepFile } from "../utility/AsciiUtil.js";
 
 const TRIANGLE_INDEX_STRIDE = 3;
 

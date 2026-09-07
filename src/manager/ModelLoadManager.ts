@@ -1,17 +1,17 @@
-import { fromBuffer } from "../accessor/BufferSourceAccessor";
-import { fromFile } from "../accessor/FileSourceAccessor";
-import type { ModelCacheAccessor } from "../accessor/ModelCacheAccessor";
-import type { ModelSource } from "../accessor/ModelSource";
-import { fromUrl } from "../accessor/UrlSourceAccessor";
+import { fromBuffer } from "../accessor/BufferSourceAccessor.js";
+import { fromFile } from "../accessor/FileSourceAccessor.js";
+import type { ModelCacheAccessor } from "../accessor/ModelCacheAccessor.js";
+import type { ModelSource } from "../accessor/ModelSource.js";
+import { fromUrl } from "../accessor/UrlSourceAccessor.js";
 import {
   createEmptyDecodedModel,
   type DecodedModel,
-} from "../common/DecodedModel";
-import type { FormatId } from "../common/FormatId";
-import { FormatSniffEngine } from "../engine/FormatSniffEngine";
-import { MeshDecodeEngine } from "../engine/MeshDecodeEngine";
-import { sha256Hex } from "../utility/HashUtil";
-import { ModuleRegistry } from "../utility/ModuleRegistry";
+} from "../common/DecodedModel.js";
+import type { FormatId } from "../common/FormatId.js";
+import { FormatSniffEngine } from "../engine/FormatSniffEngine.js";
+import { MeshDecodeEngine } from "../engine/MeshDecodeEngine.js";
+import { sha256Hex } from "../utility/HashUtil.js";
+import { ModuleRegistry } from "../utility/ModuleRegistry.js";
 
 /**
  * A decoder-version component for the cache key (ARCHITECTURE.md section
@@ -363,7 +363,7 @@ function createOcctStepDecoders(
 ): ModuleRegistry<"step", StepDecoder> {
   return new ModuleRegistry({
     step: () =>
-      import("../engine/OcctDecodeEngineProxy").then(
+      import("../engine/OcctDecodeEngineProxy.js").then(
         (module) => new module.OcctDecodeEngineProxy(occtWasmUrl),
       ),
   });
@@ -380,7 +380,7 @@ function createSolidWorksDecoders(): ModuleRegistry<
 > {
   return new ModuleRegistry({
     solidworks: () =>
-      import("../engine/SolidWorksDecodeEngineProxy").then(
+      import("../engine/SolidWorksDecodeEngineProxy.js").then(
         (module) => new module.SolidWorksDecodeEngineProxy(),
       ),
   });
@@ -393,7 +393,7 @@ function createSolidWorksDecoders(): ModuleRegistry<
 function createDxfDecoders(): ModuleRegistry<"dxf", DxfDecoder> {
   return new ModuleRegistry({
     dxf: () =>
-      import("../engine/DxfDecodeEngineProxy").then(
+      import("../engine/DxfDecodeEngineProxy.js").then(
         (module) => new module.DxfDecodeEngineProxy(),
       ),
   });

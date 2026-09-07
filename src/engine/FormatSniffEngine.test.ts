@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FormatSniffEngine } from "./FormatSniffEngine";
+import { FormatSniffEngine } from "./FormatSniffEngine.js";
 
 function ascii(text: string): Uint8Array {
   return Uint8Array.from(text, (char) => char.charCodeAt(0));

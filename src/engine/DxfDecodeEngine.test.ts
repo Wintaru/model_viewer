@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DxfDecodeEngine } from "./DxfDecodeEngine";
+import { DxfDecodeEngine } from "./DxfDecodeEngine.js";
 
 const encoder = new TextEncoder();
 

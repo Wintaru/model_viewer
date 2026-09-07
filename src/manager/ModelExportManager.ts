@@ -1,5 +1,5 @@
-import type { DecodedModel } from "../common/DecodedModel";
-import { GltfEncodeEngine } from "../engine/GltfEncodeEngine";
+import type { DecodedModel } from "../common/DecodedModel.js";
+import { GltfEncodeEngine } from "../engine/GltfEncodeEngine.js";
 
 const GLTF_MIME_TYPE = "model/gltf+json";
 

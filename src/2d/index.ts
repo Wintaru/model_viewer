@@ -8,7 +8,7 @@ import {
   OrthographicCamera,
   SRGBColorSpace,
 } from "three";
-import type { DecodedMesh, DecodedModel } from "../common";
+import type { DecodedMesh, DecodedModel } from "../common/index.js";
 
 /** Plain mid-grey — the same default `toThree` uses for an uncoloured mesh. */
 const DEFAULT_LINE_COLOR = 0x9a9a9a;

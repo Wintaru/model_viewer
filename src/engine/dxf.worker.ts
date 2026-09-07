@@ -1,9 +1,9 @@
-import type { DecodedModel } from "../common/DecodedModel";
+import type { DecodedModel } from "../common/DecodedModel.js";
 import type {
   RequestEnvelope,
   ResponseEnvelope,
-} from "../utility/WorkerTransport";
-import { DxfDecodeEngine } from "./DxfDecodeEngine";
+} from "../utility/WorkerTransport.js";
+import { DxfDecodeEngine } from "./DxfDecodeEngine.js";
 
 /**
  * The worker-side half of `DxfDecodeEngineProxy`'s bridge (ARCHITECTURE.md

@@ -1,9 +1,9 @@
-export type { ModelCacheAccessor } from "./accessor/ModelCacheAccessor";
-export type { ModelSource } from "./accessor/ModelSource";
-export { fromBuffer } from "./accessor/BufferSourceAccessor";
-export { fromFile } from "./accessor/FileSourceAccessor";
-export { fromResponse } from "./accessor/ResponseSourceAccessor";
-export { fromUrl, type UrlSourceInit } from "./accessor/UrlSourceAccessor";
+export type { ModelCacheAccessor } from "./accessor/ModelCacheAccessor.js";
+export type { ModelSource } from "./accessor/ModelSource.js";
+export { fromBuffer } from "./accessor/BufferSourceAccessor.js";
+export { fromFile } from "./accessor/FileSourceAccessor.js";
+export { fromResponse } from "./accessor/ResponseSourceAccessor.js";
+export { fromUrl, type UrlSourceInit } from "./accessor/UrlSourceAccessor.js";
 
 /**
  * Re-exported under the friendlier public name SPEC.md section 7a's API
@@ -13,14 +13,14 @@ export { fromUrl, type UrlSourceInit } from "./accessor/UrlSourceAccessor";
  * layer vocabulary. See REVIEW-BACKLOG.md, "the public loader is named two
  * ways".
  */
-export { ModelLoadManager as ModelLoader } from "./manager/ModelLoadManager";
+export { ModelLoadManager as ModelLoader } from "./manager/ModelLoadManager.js";
 export type {
   DxfDecoder,
   ModelInput,
   SolidWorksDecoder,
   StepDecoder,
   StepDecoderConfig,
-} from "./manager/ModelLoadManager";
+} from "./manager/ModelLoadManager.js";
 
 /**
  * A second, separate object next to `ModelLoader` — not a `.export()`
@@ -30,8 +30,8 @@ export type {
  * Manager-to-Manager edge `.dependency-cruiser.js`'s `no-manager-to-manager`
  * rule exists to fail the build on. See REVIEW-BACKLOG.md.
  */
-export { ModelExportManager as ModelExporter } from "./manager/ModelExportManager";
-export type { ExportOptions } from "./manager/ModelExportManager";
+export { ModelExportManager as ModelExporter } from "./manager/ModelExportManager.js";
+export type { ExportOptions } from "./manager/ModelExportManager.js";
 
 /**
  * Re-exported so a caller can build their own `StepDecoderConfig` — e.g.
@@ -40,7 +40,7 @@ export type { ExportOptions } from "./manager/ModelExportManager";
  * (a bare wasm asset URL, per ARCHITECTURE.md section 4) needs neither
  * this nor `StepDecoder`/`StepDecoderConfig` above.
  */
-export { ModuleRegistry } from "./utility/ModuleRegistry";
+export { ModuleRegistry } from "./utility/ModuleRegistry.js";
 
 export type {
   DecodedModel,
@@ -50,4 +50,4 @@ export type {
   FaceRange,
   FormatId,
   SceneNode,
-} from "./common";
+} from "./common/index.js";

@@ -3,7 +3,7 @@ import {
   WorkerTransport,
   type ResponseEnvelope,
   type WorkerLike,
-} from "./WorkerTransport";
+} from "./WorkerTransport.js";
 
 interface Posted {
   readonly message: unknown;

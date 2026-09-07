@@ -1,9 +1,9 @@
 import {
   createEmptyDecodedModel,
   type DecodedModel,
-} from "../common/DecodedModel";
-import type { Diagnostic } from "../common/Diagnostic";
-import { tessellateArc } from "../utility/ArcTessellationUtil";
+} from "../common/DecodedModel.js";
+import type { Diagnostic } from "../common/Diagnostic.js";
+import { tessellateArc } from "../utility/ArcTessellationUtil.js";
 
 /** One `code`/`value` pair from ASCII DXF's flat group-code stream. */
 interface DxfToken {

@@ -1,4 +1,4 @@
-import type { FaceRange } from "./FaceRange";
+import type { FaceRange } from "./FaceRange.js";
 
 /**
  * One mesh, in the units of the owning {@link DecodedModel}. `topology`

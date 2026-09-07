@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sha256Hex } from "./HashUtil";
+import { sha256Hex } from "./HashUtil.js";
 
 const encoder = new TextEncoder();
 

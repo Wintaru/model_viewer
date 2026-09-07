@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fromUrl } from "./UrlSourceAccessor";
+import { fromUrl } from "./UrlSourceAccessor.js";
 
 describe("fromUrl", () => {
   afterEach(() => {

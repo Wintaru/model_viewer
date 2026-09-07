@@ -1,4 +1,4 @@
-import type { DiagnosticSeverity } from "./DiagnosticSeverity";
+import type { DiagnosticSeverity } from "./DiagnosticSeverity.js";
 
 /**
  * A decoder's report of something a caller should know about, even when

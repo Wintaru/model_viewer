@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { ModuleRegistry } from "./ModuleRegistry";
+import { ModuleRegistry } from "./ModuleRegistry.js";
 
 describe("ModuleRegistry", () => {
   it("resolves the module a loader returns", async () => {

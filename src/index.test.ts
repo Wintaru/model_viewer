@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as entryPoint from "./index";
+import * as entryPoint from "./index.js";
 
 describe("entry point", () => {
   it("exposes exactly the public surface SPEC.md section 7a documents", () => {

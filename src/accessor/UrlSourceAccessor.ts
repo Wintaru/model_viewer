@@ -1,4 +1,4 @@
-import type { ModelSource } from "./ModelSource";
+import type { ModelSource } from "./ModelSource.js";
 
 /**
  * A bare `fetch` reference, called later as `this.fetchImpl(...)`, invokes

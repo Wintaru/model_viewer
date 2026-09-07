@@ -1,6 +1,6 @@
-import type { DecodedMesh } from "../common/DecodedMesh";
-import type { DecodedModel } from "../common/DecodedModel";
-import type { SceneNode } from "../common/SceneNode";
+import type { DecodedMesh } from "../common/DecodedMesh.js";
+import type { DecodedModel } from "../common/DecodedModel.js";
+import type { SceneNode } from "../common/SceneNode.js";
 
 const GLTF_VERSION = "2.0";
 

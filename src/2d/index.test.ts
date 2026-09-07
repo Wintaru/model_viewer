@@ -4,8 +4,8 @@ import {
   frameOrthographicCamera,
   setLayerVisible,
   toThreeDrawing,
-} from "./index";
-import type { DecodedMesh, DecodedModel } from "../common";
+} from "./index.js";
+import type { DecodedMesh, DecodedModel } from "../common/index.js";
 
 function lineMesh(overrides: Partial<DecodedMesh> = {}): DecodedMesh {
   return {

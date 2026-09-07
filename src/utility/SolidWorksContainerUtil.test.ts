@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { deflateRaw } from "pako";
 import { describe, expect, it } from "vitest";
-import { extractModernContainerChunks } from "./SolidWorksContainerUtil";
+import { extractModernContainerChunks } from "./SolidWorksContainerUtil.js";
 
 const SOLIDWORKS_DIR = "assets/solidworks";
 const CHUNK_MARKER = [0x14, 0x00, 0x06, 0x00, 0x08, 0x00];

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromResponse } from "./ResponseSourceAccessor";
+import { fromResponse } from "./ResponseSourceAccessor.js";
 
 describe("fromResponse", () => {
   it("reads back the same bytes given a successful Response", async () => {

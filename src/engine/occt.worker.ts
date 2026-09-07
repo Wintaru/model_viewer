@@ -1,10 +1,10 @@
-import { WasmAssetAccessor } from "../accessor/WasmAssetAccessor";
-import type { DecodedModel } from "../common/DecodedModel";
+import { WasmAssetAccessor } from "../accessor/WasmAssetAccessor.js";
+import type { DecodedModel } from "../common/DecodedModel.js";
 import type {
   RequestEnvelope,
   ResponseEnvelope,
-} from "../utility/WorkerTransport";
-import { OcctDecodeEngine } from "./OcctDecodeEngine";
+} from "../utility/WorkerTransport.js";
+import { OcctDecodeEngine } from "./OcctDecodeEngine.js";
 
 /**
  * The worker-side half of `OcctDecodeEngineProxy`'s bridge

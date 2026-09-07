@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tessellateArc } from "./ArcTessellationUtil";
+import { tessellateArc } from "./ArcTessellationUtil.js";
 
 describe("tessellateArc", () => {
   it("tessellates a full circle, closing the loop", () => {

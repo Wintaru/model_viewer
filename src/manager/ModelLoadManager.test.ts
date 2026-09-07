@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fromBuffer } from "../accessor/BufferSourceAccessor";
-import type { ModelSource } from "../accessor/ModelSource";
-import type { DecodedModel } from "../common/DecodedModel";
-import { MeshDecodeEngine } from "../engine/MeshDecodeEngine";
-import { ModuleRegistry } from "../utility/ModuleRegistry";
+import { fromBuffer } from "../accessor/BufferSourceAccessor.js";
+import type { ModelSource } from "../accessor/ModelSource.js";
+import type { DecodedModel } from "../common/DecodedModel.js";
+import { MeshDecodeEngine } from "../engine/MeshDecodeEngine.js";
+import { ModuleRegistry } from "../utility/ModuleRegistry.js";
 import {
   ModelLoadManager,
   type DxfDecoder,
   type SolidWorksDecoder,
   type StepDecoder,
-} from "./ModelLoadManager";
+} from "./ModelLoadManager.js";
 
 /**
  * A minimal, this-file-only ambient type for the one Node global one

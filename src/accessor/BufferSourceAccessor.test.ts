@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fromBuffer } from "./BufferSourceAccessor";
+import { fromBuffer } from "./BufferSourceAccessor.js";
 
 describe("fromBuffer", () => {
   it("reads back the same bytes given an ArrayBuffer", async () => {

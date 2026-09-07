@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MeshDecodeEngine } from "./MeshDecodeEngine";
+import { MeshDecodeEngine } from "./MeshDecodeEngine.js";
 
 interface Triangle {
   readonly normal: readonly [number, number, number];

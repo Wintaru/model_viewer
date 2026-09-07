@@ -5,7 +5,7 @@ import {
   decodeTessDataStream,
   extractTessDataStreams,
   SolidWorksDecodeEngine,
-} from "./SolidWorksDecodeEngine";
+} from "./SolidWorksDecodeEngine.js";
 
 const SOLIDWORKS_DIR = "assets/solidworks";
 const TESS_DATA_MAGIC = "TessData";

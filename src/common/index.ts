@@ -1,8 +1,8 @@
-export type { DecodedModel } from "./DecodedModel";
-export { createEmptyDecodedModel } from "./DecodedModel";
-export type { DecodedMesh } from "./DecodedMesh";
-export type { FaceRange } from "./FaceRange";
-export type { SceneNode } from "./SceneNode";
-export type { Diagnostic } from "./Diagnostic";
-export type { DiagnosticSeverity } from "./DiagnosticSeverity";
-export type { FormatId } from "./FormatId";
+export type { DecodedModel } from "./DecodedModel.js";
+export { createEmptyDecodedModel } from "./DecodedModel.js";
+export type { DecodedMesh } from "./DecodedMesh.js";
+export type { FaceRange } from "./FaceRange.js";
+export type { SceneNode } from "./SceneNode.js";
+export type { Diagnostic } from "./Diagnostic.js";
+export type { DiagnosticSeverity } from "./DiagnosticSeverity.js";
+export type { FormatId } from "./FormatId.js";

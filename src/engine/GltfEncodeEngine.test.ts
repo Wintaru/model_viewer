@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   createEmptyDecodedModel,
   type DecodedModel,
-} from "../common/DecodedModel";
-import type { DecodedMesh } from "../common/DecodedMesh";
-import type { SceneNode } from "../common/SceneNode";
-import { GltfEncodeEngine } from "./GltfEncodeEngine";
+} from "../common/DecodedModel.js";
+import type { DecodedMesh } from "../common/DecodedMesh.js";
+import type { SceneNode } from "../common/SceneNode.js";
+import { GltfEncodeEngine } from "./GltfEncodeEngine.js";
 
 interface GltfAccessorJson {
   bufferView: number;
