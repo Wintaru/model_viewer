@@ -38,6 +38,7 @@
     "format": "prettier --check .",
     "test": "vitest run",
     "build": "tsc --project tsconfig.build.json",
+    "check:dist": "node scripts/check-dist.mjs",
     "build:demo": "node scripts/build-library-demo.mjs",
     "serve:demo": "python3 -m http.server 8000 --directory demo",
     "verify": "pnpm run typecheck && pnpm run lint && pnpm run format && pnpm run test"
