@@ -104,6 +104,25 @@ const MAX_ABS_POSITION_METRES = 100.0;
 const MIN_NORMAL_LENGTH = 1e-9;
 const UNIT_NORMAL_TOLERANCE = 0.5;
 const MIN_UNIT_NORMAL_RATIO = 0.8;
+// How consistent a vertex's touching triangles' own geometric normals must
+// be with each other before its neighborhood counts as "flat" (no
+// legitimate curvature to justify a smoothly-blended normal there).
+const FLAT_NEIGHBOURHOOD_TOLERANCE_DEG = 3;
+// How far a stored normal may sit from that flat direction before it is
+// treated as wrong rather than as ordinary noise.
+const NORMAL_MISMATCH_TOLERANCE_DEG = 30;
+const FLAT_NEIGHBOURHOOD_MIN_COS = Math.cos(
+  (FLAT_NEIGHBOURHOOD_TOLERANCE_DEG * Math.PI) / 180,
+);
+const NORMAL_MISMATCH_MAX_COS = Math.cos(
+  (NORMAL_MISMATCH_TOLERANCE_DEG * Math.PI) / 180,
+);
+// sin(angle) between a triangle's two edge vectors, below which it counts
+// as degenerate. Scale-relative (unlike a raw cross-product-magnitude
+// check) so it classifies consistently whether positions are metres or
+// millimetres, and so float32 rounding noise on otherwise-collinear points
+// can't manufacture a spurious "real" direction out of pure noise.
+const DEGENERATE_TRIANGLE_SIN_THRESHOLD = 1e-4;
 
 export interface SolidWorksMesh {
   readonly positions: Float32Array;
@@ -195,6 +214,7 @@ function assembleMesh(kept: readonly TessellationBlock[]): SolidWorksMesh {
   const normals = concatFloat32(normalParts);
   const indexArray = Uint32Array.from(indices);
   repairZeroLengthNormals(positions, normals, indexArray);
+  repairMismatchedFlatNormals(positions, normals, indexArray);
 
   return {
     positions,
@@ -291,6 +311,153 @@ function repairZeroLengthNormals(
   }
 }
 
+/**
+ * A second, distinct defect from the zero-length one above, found the same
+ * way: measured on a real customer part, not assumed (DECISIONS.md). On a
+ * genuinely flat facet — every triangle touching a vertex geometrically
+ * coplanar, so there is exactly one correct normal direction and no
+ * curvature to justify anything else — a real chunk of vertices carry a
+ * *non-zero, unit-length* stored normal that is still wrong: not a small
+ * numeric error, but off by tens of degrees, and in every case checked it
+ * turned out to exactly match the true normal of a different, adjacent
+ * face at the same part (e.g. a wall's normal borrowed by a vertex that
+ * actually belongs to a perpendicular flange). Only the first one or two
+ * vertices of each strip were ever unaffected — the same leading-anchor
+ * position implicated in the zero-length defect — so this reads as the
+ * same underlying cause (SolidWorks's cached tessellation not reliably
+ * writing a real per-vertex normal past a strip's first edge), just
+ * surfacing as a borrowed real normal here instead of a zero one.
+ *
+ * Detected independently of the confirmed-wrong direction: for each
+ * vertex, check whether every triangle touching it agrees on one
+ * geometric direction (flat neighbourhood). Only then compare the stored
+ * normal against that direction and, if it disagrees by more than a wide
+ * margin, replace it — a vertex whose neighbourhood is genuinely curved is
+ * never touched, because there is no independent way to tell a legitimate
+ * smoothly-blended normal from a wrong one there.
+ */
+function repairMismatchedFlatNormals(
+  positions: Float32Array,
+  normals: Float32Array,
+  indices: Uint32Array,
+): void {
+  const vertexCount = positions.length / FLOATS_PER_VERTEX;
+  const touchingTriangleStarts: number[][] = Array.from(
+    { length: vertexCount },
+    () => [],
+  );
+  for (let t = 0; t + 2 < indices.length; t += 3) {
+    for (const vertex of [
+      indices[t] ?? 0,
+      indices[t + 1] ?? 0,
+      indices[t + 2] ?? 0,
+    ]) {
+      touchingTriangleStarts[vertex]?.push(t);
+    }
+  }
+
+  for (let v = 0; v < vertexCount; v++) {
+    const storedLength = vectorLength(normals, v);
+    if (storedLength < MIN_NORMAL_LENGTH) {
+      continue; // repairZeroLengthNormals is responsible for this vertex.
+    }
+
+    const faceNormals: Array<readonly [number, number, number]> = [];
+    for (const t of touchingTriangleStarts[v] ?? []) {
+      const face = triangleNormal(
+        positions,
+        indices[t] ?? 0,
+        indices[t + 1] ?? 0,
+        indices[t + 2] ?? 0,
+      );
+      if (face !== undefined) {
+        faceNormals.push(face);
+      }
+    }
+    const flatDirection = flatNeighbourhoodDirection(faceNormals);
+    if (flatDirection === undefined) {
+      continue; // Curved (or fully degenerate) neighbourhood -- leave it.
+    }
+
+    const stored: readonly [number, number, number] = [
+      (normals[v * 3] ?? 0) / storedLength,
+      (normals[v * 3 + 1] ?? 0) / storedLength,
+      (normals[v * 3 + 2] ?? 0) / storedLength,
+    ];
+    if (dotProduct(stored, flatDirection) < NORMAL_MISMATCH_MAX_COS) {
+      normals[v * 3] = flatDirection[0];
+      normals[v * 3 + 1] = flatDirection[1];
+      normals[v * 3 + 2] = flatDirection[2];
+    }
+  }
+}
+
+// A single touching triangle can never corroborate flatness -- it just
+// asserts its own normal with no independent second opinion, and that is
+// exactly the case (a strip's first/last vertex, or a block boundary)
+// where a genuinely curved surface is most likely to only have one
+// triangle on this side of the seam. Requiring at least two keeps this
+// repair from confidently overwriting a legitimate smoothly-blended
+// normal there.
+const MIN_CORROBORATING_TRIANGLES = 2;
+
+/**
+ * The one consistent direction a vertex's touching triangles agree on, or
+ * `undefined` if they disagree by more than `FLAT_NEIGHBOURHOOD_TOLERANCE_DEG`
+ * (genuine curvature), there are fewer than `MIN_CORROBORATING_TRIANGLES` to
+ * compare, or there is nothing non-degenerate at all.
+ */
+function flatNeighbourhoodDirection(
+  faceNormals: ReadonlyArray<readonly [number, number, number]>,
+): readonly [number, number, number] | undefined {
+  if (faceNormals.length < MIN_CORROBORATING_TRIANGLES) {
+    return undefined;
+  }
+  const first = faceNormals[0];
+  if (first === undefined) {
+    return undefined;
+  }
+  // Compared against this one fixed reference, not pairwise against each
+  // other -- two faces could each sit just under the tolerance from it yet
+  // slightly over it from each other. Not worth the extra complexity: the
+  // defect this repairs is off by tens of degrees, far past where that
+  // approximation could matter.
+  const reference = normalize(first);
+  let sumX = 0;
+  let sumY = 0;
+  let sumZ = 0;
+  for (const face of faceNormals) {
+    const unit = normalize(face);
+    if (dotProduct(reference, unit) < FLAT_NEIGHBOURHOOD_MIN_COS) {
+      return undefined;
+    }
+    sumX += unit[0];
+    sumY += unit[1];
+    sumZ += unit[2];
+  }
+  const length = Math.sqrt(sumX * sumX + sumY * sumY + sumZ * sumZ);
+  if (length < MIN_NORMAL_LENGTH) {
+    return undefined;
+  }
+  return [sumX / length, sumY / length, sumZ / length];
+}
+
+function normalize(
+  v: readonly [number, number, number],
+): readonly [number, number, number] {
+  const length = Math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+  return length < MIN_NORMAL_LENGTH
+    ? v
+    : [v[0] / length, v[1] / length, v[2] / length];
+}
+
+function dotProduct(
+  a: readonly [number, number, number],
+  b: readonly [number, number, number],
+): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
 function vectorLength(components: Float32Array, index: number): number {
   const x = components[index * 3] ?? 0;
   const y = components[index * 3 + 1] ?? 0;
@@ -326,11 +493,17 @@ function triangleNormal(
   const vx = cx - ax;
   const vy = cy - ay;
   const vz = cz - az;
+  const uLength = Math.sqrt(ux * ux + uy * uy + uz * uz);
+  const vLength = Math.sqrt(vx * vx + vy * vy + vz * vz);
+  if (uLength < MIN_NORMAL_LENGTH || vLength < MIN_NORMAL_LENGTH) {
+    return undefined; // Duplicate points -- no edge to take a normal from.
+  }
   const nx = uy * vz - uz * vy;
   const ny = uz * vx - ux * vz;
   const nz = ux * vy - uy * vx;
-  if (Math.sqrt(nx * nx + ny * ny + nz * nz) < MIN_NORMAL_LENGTH) {
-    return undefined; // Degenerate (collinear or duplicate) triangle.
+  const crossLength = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  if (crossLength / (uLength * vLength) < DEGENERATE_TRIANGLE_SIN_THRESHOLD) {
+    return undefined; // Degenerate: the two edges are collinear.
   }
   return [nx, ny, nz];
 }
