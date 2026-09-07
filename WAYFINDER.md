@@ -807,9 +807,34 @@ standards data, not the views and dimensions this project wants. It proves the
 method, not the payload. The second drawing found no array at all, so this
 locates fields where ground truth happens to reach and nowhere else.
 
-`research/d22-value-locate.py`. Next: get ground truth closer to the geometry —
-view scale and sheet size are both printed in the title block and both should
-appear near `moView_c`.
+`research/d22-value-locate.py`.
+
+**The sheet record is located, 2026-09-07 16:14 — and it needs no PDF.** A
+drawing sheet is one of a handful of standard sizes, so those values are known
+in advance. Searching for them found the same arrangement in **all 87 real
+drawings**: sheet height and width as two float64 in metres, eight bytes
+apart, height first. Decoy sizes that no standard uses (19x13, 12.2x7.5,
+30.6x21.9) matched in none of them.
+
+The region around that pair reads as structure rather than noise. At a fixed
+distance before it sit `1.0` and `2.0`, eight bytes apart, which is the shape
+of a scale held as numerator and denominator. At a fixed distance after it sit
+**four consecutive values of exactly half an inch**, which is the shape of
+four sheet margins. Both patterns are identical in every file checked.
+
+**The honest limit, and it is a real one.** All 87 drawings are ANSI B at the
+same scale, because they are one company's template. Nothing varies. So this
+cannot yet tell "the sheet size field is here" apart from "a constant that
+happens to equal the sheet size is here", and the scale and margin readings
+are interpretation, not measurement. Attempting to check the scale against the
+PDF failed for a separate reason: `pdftotext` extracts no `SCALE` text from
+these files at all, so the title block is not reachable that way.
+
+**What settles it is now cheap.** One drawing on a different sheet size, or at
+a different scale, from any source at all — it does not need to be a customer
+file, and it does not need SolidWorks to make. If the located values track the
+new sheet, the field is confirmed and the sheet record is decoded. Next after
+that: `moView_c`, using the same anchoring.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 

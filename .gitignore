@@ -34,3 +34,7 @@ DECISIONS.md
 .DS_Store
 .playwright-mcp/
 mermaid-*.png
+
+# Python bytecode cache. research/d22-definition-probe.py is importable, so
+# running the scripts creates this.
+__pycache__/

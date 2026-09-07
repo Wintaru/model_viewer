@@ -38,8 +38,21 @@ it must never print a value, a string, or a byte from either the PDF or the
 chunk. The layout map prints one character per byte position saying only
 whether that position varies between records. Keep it that way.
 
+The sheet-size half of the search needs no PDF at all: a drawing sheet is one
+of a handful of standard sizes, so those values are known in advance. That
+found the same thing in all 87 real drawings -- sheet height and width as two
+float64 in metres, eight bytes apart, height first -- with decoy sizes never
+matching. The region around that pair reads as recognisable standard
+constants rather than arbitrary numbers.
+
+The honest limit on that result: all 87 drawings are ANSI B at the same scale,
+because they are one company's template. Nothing varies, so this cannot yet
+tell "the sheet size field is here" apart from "a constant that equals the
+sheet size is here". One drawing on a different sheet size settles it, from
+any source.
+
 Usage: d22-value-locate.py <file.SLDDRW> [more files...]
-       Each drawing needs a PDF of the same name beside it.
+       A PDF of the same name beside it enables the extra sheet-number search.
 """
 
 import bisect
@@ -58,6 +71,42 @@ probe = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(probe)
 
 DECIMAL_RE = re.compile(r"\d+\.\d+")
+
+# Standard drawing sheet sizes, width and height in inches. These need no PDF,
+# so this half of the search works on any drawing. A sheet size is a value the
+# file must hold somewhere, and it is not customer data, which makes it the
+# cleanest possible anchor.
+SHEET_SIZES_INCHES = {
+    "ANSI A": (11.0, 8.5),
+    "ANSI B": (17.0, 11.0),
+    "ANSI C": (22.0, 17.0),
+    "ANSI D": (34.0, 22.0),
+    "ANSI E": (44.0, 34.0),
+    "ISO A4": (11.693, 8.268),
+    "ISO A3": (16.535, 11.693),
+    "ISO A2": (23.386, 16.535),
+}
+# Sizes no standard uses. If one of these ever matches, the search is finding
+# coincidences and its results mean nothing.
+DECOY_SIZES_INCHES = {
+    "decoy 19x13": (19.0, 13.0),
+    "decoy 12.2x7.5": (12.2, 7.5),
+    "decoy 30.6x21.9": (30.6, 21.9),
+}
+# Values worth recognising near a located sheet record. All are standard, so
+# none of them is customer data.
+NAMED_CONSTANTS = {
+    1.0: "1",
+    2.0: "2",
+    4.0: "4",
+    0.5: "1/2",
+    0.25: "1/4",
+    0.125: "1/8",
+    0.0254: "1 inch",
+    0.0127: "half an inch",
+    0.00635: "quarter of an inch",
+}
+SHEET_WINDOW = 256
 MIN_VALUE, MAX_VALUE = 0.001, 1000.0
 INCHES_TO_METRES = 0.0254
 F64_TOLERANCE = 1e-9
@@ -74,7 +123,13 @@ MIN_CONSTANT_FRACTION = 0.20
 
 
 def pdf_numbers(pdf: pathlib.Path) -> list[float]:
-    """Every decimal number printed on the sheet, deduplicated and sorted."""
+    """Every decimal number printed on the sheet, deduplicated and sorted.
+
+    Empty when no PDF sits beside the drawing. The sheet-size search below
+    needs no PDF, so a drawing without one is still worth examining.
+    """
+    if not pdf.exists():
+        return []
     text = subprocess.run(
         ["pdftotext", "-q", str(pdf), "-"], capture_output=True, text=True
     ).stdout
@@ -154,11 +209,49 @@ def layout_map(chunk: bytes, start: int, stride: int, count: int) -> str:
     return "".join(marks)
 
 
+def sheet_record(chunk: bytes) -> None:
+    """Find a sheet's height and width, then read what sits around them.
+
+    Height and width are stored as two float64 in metres, eight bytes apart,
+    height first. Finding that pair locates a fixed-layout region, and the
+    values nearby are recognisable standard constants rather than arbitrary
+    numbers. Decoy sizes run alongside for the same reason as everywhere else
+    in this script.
+    """
+    for label, sizes in [
+        ("sheet size", SHEET_SIZES_INCHES),
+        ("decoy control", DECOY_SIZES_INCHES),
+    ]:
+        for name, (width_in, height_in) in sizes.items():
+            width, height = width_in * INCHES_TO_METRES, height_in * INCHES_TO_METRES
+            heights = offsets_of(chunk, height)
+            widths = set(offsets_of(chunk, width))
+            pairs = [o for o in heights if o + 8 in widths]
+            if not pairs:
+                continue
+            print(f"    {label}: {name}, {len(pairs)} adjacent height+width pair(s)")
+            if label == "decoy control":
+                continue
+            base = min(pairs)
+            print(f"        reading the region around 0x{base:06x}:")
+            for offset in range(
+                max(0, base - SHEET_WINDOW),
+                min(len(chunk) - 8, base + SHEET_WINDOW),
+            ):
+                value = struct.unpack_from("<d", chunk, offset)[0]
+                for known, described in NAMED_CONSTANTS.items():
+                    if abs(value - known) < abs(known) * F64_TOLERANCE:
+                        print(f"            {offset - base:>+5}  {described}")
+                        break
+                else:
+                    if abs(value - height) < height * F64_TOLERANCE:
+                        print(f"            {offset - base:>+5}  sheet height")
+                    elif abs(value - width) < width * F64_TOLERANCE:
+                        print(f"            {offset - base:>+5}  sheet width")
+
+
 def examine(path: pathlib.Path) -> None:
     pdf = path.with_suffix(".pdf")
-    if not pdf.exists():
-        print(f"{path.suffix}: no PDF beside it, so no ground truth. Skipped.")
-        return
     chunk = next(
         (
             payload
@@ -198,6 +291,8 @@ def examine(path: pathlib.Path) -> None:
             f"    {label:<17}: {real:>3} of {len(numbers)} found | "
             f"decoy control {control:>3} of {len(decoys)}"
         )
+
+    sheet_record(chunk)
 
     print("    record arrays found by following a located value:")
     reported = set()
