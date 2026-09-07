@@ -9,8 +9,14 @@ a caller can show any of them with the same rendering code.
 
 ## Status
 
-This project is under active development. The package is not yet published
-to npm. Clone this repository to try it now — see "Development" below.
+Version 1.0.0. The public surface — `ModelLoader`, `ModelExporter`,
+`toThree`, and `toThreeDrawing` — is stable, and a change that breaks it
+raises the major version.
+
+Version 1.0.0 does not mean every format is complete. It means the scope is
+settled and the interface will hold. Read the next section for what the
+library really does today, and the support table for each format. Both
+describe narrower coverage than the version number alone suggests.
 
 ## What is verified, and what is not
 
@@ -60,8 +66,13 @@ OBJ, PLY, glTF, and 3MF are planned but not yet supported.
 npm install @wintaru/part-viewer
 ```
 
-This command will work once the package is published. Until then, build
-from source — see "Development" below.
+To render a model, also install three.js. It is an optional peer dependency,
+so a caller who only reads geometry — for a measurement, or a headless
+conversion — does not need it and does not pay for it.
+
+```
+npm install three
+```
 
 ## Quick start
 
@@ -127,19 +138,53 @@ only the core package. That caller's code does not load three.js.
 An interactive demo lives in `demo/`. See `demo/README.md` for what it
 proves and how to run it locally.
 
+## Contributing
+
+Issues and pull requests are welcome. `CONTRIBUTING.md` has the detail, and
+one rule there is worth repeating here: **never attach a CAD file to an
+issue.** A SolidWorks file carries folder paths, user names, and part numbers
+as plain text. Describe the file instead. The bug report template asks for
+the facts that help.
+
+Report a security problem privately. See `SECURITY.md`.
+
 ## Development
 
-This project uses `pnpm`.
+This project uses `pnpm` and needs Node 22.12 or later.
 
 ```
 pnpm install
 pnpm run verify   # type-check, lint, format check, and tests
-pnpm assets       # fetch the test corpus (not stored in git)
+pnpm assets       # fetch the test corpus, about 75 MB, not stored in git
+```
+
+Tests that need a real CAD file skip when the corpus is absent, so a fresh
+clone is green without the download. Continuous integration fetches it, so
+those tests do run before a merge.
+
+To check the compiled package, rather than the source:
+
+```
+pnpm run build && pnpm run check:dist
 ```
 
 `ARCHITECTURE.md` describes how the library is built. `SPEC.md` describes
 what is built and in what order. `WAYFINDER.md` lists open decisions.
+`REVIEW-BACKLOG.md` lists known defects in `SPEC.md` and `ARCHITECTURE.md`,
+so read it before you trust a detail from either.
 
 ## License
 
 MIT. See `LICENSE`.
+
+STEP and IGES are decoded by [`occt-import-js`][occt], which carries a
+compiled build of Open CASCADE Technology. That package is LGPL-2.1.
+
+This library's own code is MIT, and it does not include or modify
+`occt-import-js`. npm installs that package separately, beside this one, so
+you receive it under its own licence and can replace it with your own build.
+It is loaded only when a caller opens a STEP or an IGES file, through a
+dynamic import, so a caller who opens neither never loads it. Every other
+format in the support table is decoded by this project's own MIT code.
+
+[occt]: https://github.com/kovacsv/occt-import-js

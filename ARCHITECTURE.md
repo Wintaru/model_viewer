@@ -412,11 +412,16 @@ rediscovered.
 
 ### What is verified, and what is not
 
-6 of 11 NIST parts reproduce the bounding box measured independently from their
-STEP twin with OCCT, several to two decimal places. Of the remaining five, four
-decode the part correctly but report an oversized box because the cache also
-holds tessellated PMI annotation geometry. One, `nist_ftc_11`, is a genuine
-unexplained miss.
+7 of 11 NIST parts reproduce the bounding box measured independently from their
+STEP twin with OCCT, several to two decimal places. The remaining four decode
+the part correctly but report an oversized box, because the cache also holds
+tessellated PMI annotation geometry.
+
+This was 6 of 11 until 2026-09-07. `nist_ftc_11`, recorded here as a genuine
+unexplained miss, now passes: an overly strict tessellation-block validity
+check was rejecting a real block. See WAYFINDER.md's D16 for the measurement.
+Section 6a below and `research/FINDINGS.md` deliberately keep the older figure,
+because they record what was measured at the time, not the current result.
 
 Verified on SolidWorks 2018 and 2020, parts only. Assemblies are untested.
 
