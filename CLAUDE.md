@@ -10,7 +10,11 @@ encryption, and it holds a cached tessellation.
 
 Be careful how you restate that. What is actually verified: 7 of 11 NIST test
 parts reproduce the bounding box measured from their STEP twin, within 2 percent
-or 0.5 mm, and only SolidWorks 2018 is reproducible from this repository.
+or 0.5 mm, on SolidWorks 2018 files — the only ones reproducible from this
+repository. Files written by **SolidWorks 2026** also decode (62 parts, 35
+assemblies and 87 drawings, all read without error), but they are a customer's
+and cannot ship here, and decoding is a weaker claim than measuring: it shows
+real geometry comes out, not that it measures correctly. Keep those two apart.
 Assemblies decode as well, but only against real files this repository cannot
 ship, and an assembly that repeats one component is unverified (WAYFINDER.md's
 D20). **Drawings are not supported at all** — a `.SLDDRW` opens and silently

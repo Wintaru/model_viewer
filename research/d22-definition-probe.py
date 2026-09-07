@@ -74,6 +74,20 @@ INLINE_F1_THRESHOLD = 65536
 
 TARGET_CHUNK = "Contents/Definition"
 
+# Standard OPC metadata. Worth reporting beside any format finding, because
+# "which SolidWorks wrote this" decides how far the finding generalises.
+#
+# Careful with AppVersion: it is the CONTAINER FORMAT generation, not the
+# application that saved the file. Every file in the corpus checked here says
+# 23.0000, which maps to SolidWorks 2015 -- exactly the release that
+# introduced this container (WAYFINDER.md's D13 calls it the "2015+" format).
+# The PDFs published beside those same drawings all name SOLIDWORKS 2026 as
+# their creator, so 23.0000 is a constant of the format and says nothing about
+# the writing application.
+APP_PROPS_CHUNK = "docProps/app.xml"
+APP_VERSION_RE = re.compile(rb"<AppVersion>([^<]{0,40})</AppVersion>")
+VERSION_CHUNK_PREFIXES = ("_MO_VERSION_", "_DL_VERSION_")
+
 # SolidWorks names its serialised types "<Something>_c" (the tessellation work
 # in D8 keyed off exactly this: uoTempFaceTessData_c, uoTempBodyTessData_c).
 # Anchored at both ends so a customer string that merely contains such a
@@ -178,6 +192,25 @@ def ascii_runs(buf: bytes):
     return runs
 
 
+def container_version(data: bytes) -> str:
+    """What the container says about its own format generation.
+
+    See APP_PROPS_CHUNK above for why this is not the writing application.
+    """
+    app_version = "unknown"
+    version_chunks = set()
+    for name, payload in parse_modern_format(data):
+        if name == APP_PROPS_CHUNK and payload is not None:
+            found = APP_VERSION_RE.search(payload)
+            if found:
+                app_version = found.group(1).decode("ascii", "replace")
+        root = name.split("/")[0]
+        if root.startswith(VERSION_CHUNK_PREFIXES):
+            version_chunks.add(root)
+    listed = ", ".join(sorted(version_chunks)) or "none"
+    return f"format generation {app_version}; version chunks {listed}"
+
+
 def describe(path: pathlib.Path) -> None:
     data = path.read_bytes()
     chunk = None
@@ -190,6 +223,7 @@ def describe(path: pathlib.Path) -> None:
         return
 
     print(f"=== {path.suffix}, container {len(data):,} bytes")
+    print(f"    {container_version(data)}")
     print(f"    {TARGET_CHUNK}: {len(chunk):,} bytes decompressed")
 
     whole = entropy(chunk)

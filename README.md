@@ -27,8 +27,16 @@ and it holds a display mesh SolidWorks itself already computed and cached.
 
 This decoder is checked against the NIST test corpus, a public set of CAD
 files. Seven of eleven NIST test parts reproduce the bounding box measured
-from their STEP twin, within 2 percent or 0.5 mm. Only SolidWorks 2018 is
-reproducible from this repository.
+from their STEP twin, within 2 percent or 0.5 mm. Those files are SolidWorks
+2018, and they are the only files you can reproduce this result from here.
+
+Version coverage is wider than that measurement suggests, and the two claims
+are worth keeping apart. Files written by **SolidWorks 2026** also decode: 62
+parts, 35 assemblies and 87 drawings, all read without error. Those files
+belong to a customer, so this repository cannot ship them and you cannot
+reproduce that result here. It also proves less: it shows the files decode
+into real geometry, not that the geometry measures correctly. Dimensional
+accuracy is checked against 2018 only.
 
 Assemblies (`.SLDASM`) decode too, but that result is narrower. It is
 measured against real assembly files that this repository cannot ship, so

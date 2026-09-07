@@ -557,8 +557,19 @@ which block building:
   is mixed in.
 - Explain `nist_ftc_11`, which reports a box that is too small. A real miss.
 - Test more SolidWorks versions. Only parts are proven, and only on 2018 and
-  2020. **Narrowed 2026-09-07, see D20, below: SLDASM decoding itself is no
-  longer untested** — one real customer assembly now decodes and renders
+  2020. **Narrowed again 2026-09-07 16:30 — the whole customer corpus is
+  SolidWorks 2026, so version coverage is much wider than this item says.**
+  Every PDF published beside those drawings names `SOLIDWORKS 2026 SP2.1` as
+  its creator, all 87 of them, and 62 parts, 35 assemblies and 87 drawings
+  from that same set all decode without error. Do not read the containers'
+  own `docProps/app.xml` as the writing application: it says `23.0000` in
+  every file, which is SolidWorks 2015, the release that introduced this
+  container generation (D13's "2015+" format). It is a constant of the
+  format. The real remaining gap is narrower than "test more versions": no
+  version other than 2018 has a *dimensional* check, because only the NIST
+  files have a STEP twin to measure against. 2026 is proven to decode, not
+  proven to measure. **Narrowed 2026-09-07, see D20, below: SLDASM decoding
+  itself is no longer untested** — one real customer assembly now decodes and renders
   correctly — but assemblies with multiple components, nested
   sub-assemblies, or suppressed components remain unchecked, and the
   SolidWorks-version caveat still applies equally to assemblies. **A
