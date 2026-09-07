@@ -144,10 +144,11 @@ describe("extractTessDataStreams", () => {
 
 /**
  * Hand-builds one tessellation block, ARCHITECTURE.md section 6's record
- * layout: `4, 8, 2, N`, then N strip sizes, then a tail whose only
- * requirement (`research/d9-decode.py`'s `_scan`) is that the vertex total
- * appears somewhere in the next few words — placed immediately after the
- * sizes here, the simplest layout the scanner accepts.
+ * layout: `4, 8, 2, N`, then N strip sizes, then the tail `a, b, 2, TOTAL`
+ * (the literal `2` immediately before `TOTAL` is load-bearing — see
+ * `findWordAfterTotalMarker` — so this writes the real four-word tail
+ * rather than `TOTAL` alone). `a`/`b` are arbitrary filler: nothing reads
+ * them.
  */
 function buildTessellationBlock(
   stripSizes: readonly number[],
@@ -156,7 +157,7 @@ function buildTessellationBlock(
 ): Uint8Array {
   const total = stripSizes.reduce((sum, size) => sum + size, 0);
   const wordCount =
-    4 + stripSizes.length + 1 + positions.length + normals.length;
+    4 + stripSizes.length + 4 + positions.length + normals.length;
   const bytes = new Uint8Array(wordCount * 4);
   const view = new DataView(bytes.buffer);
 
@@ -169,8 +170,10 @@ function buildTessellationBlock(
     view.setUint32(word * 4, size, true);
     word += 1;
   }
-  view.setUint32(word * 4, total, true);
-  word += 1;
+  for (const tailWord of [12, 100, 2, total]) {
+    view.setUint32(word * 4, tailWord, true);
+    word += 1;
+  }
   for (const value of [...positions, ...normals]) {
     view.setFloat32(word * 4, value, true);
     word += 1;
@@ -436,20 +439,42 @@ describe("decodeTessDataStream", () => {
 
   it("rejects a header whose strip sizes don't add up to the tail's total", () => {
     // A hand-corrupted block: claims total 9 in the header dance, but the
-    // tail word placed right after the sizes is a different value, so the
-    // "does the tail contain the total" search never matches.
+    // tail's own total word is a different value, so the "does the tail
+    // contain the total, right after a literal 2" search never matches.
     const block = buildTessellationBlock(
       [4, 5],
       Array.from({ length: 27 }, (_, i) => i * 0.01),
       unitNormals(9),
     );
-    // Word 6 (right after the 2 strip sizes) holds the tail total (9) —
-    // corrupt it so no window search can find a match.
-    new DataView(block.buffer).setUint32(6 * 4, 999, true);
+    // Word 9 -- header(4) + 2 strip sizes + tail's a, b, 2 -- holds the
+    // tail's total (9); corrupt it so no window search can find a match.
+    new DataView(block.buffer).setUint32(9 * 4, 999, true);
 
     const mesh = decodeTessDataStream(block);
 
     expect(mesh.indices).toHaveLength(0);
+  });
+
+  it("decodes a block correctly even when its own vertex total equals the tail's leading constant", () => {
+    // Regression test: a real customer part had three small blocks that
+    // each tessellated to exactly 12 vertices -- the same value as `12`,
+    // the tail's own leading (otherwise-unused) constant word. Matching
+    // `findWordAfterTotalMarker` on the vertex total alone, without also
+    // requiring the literal `2` immediately before it, locked onto that
+    // leading constant instead of the real total three words later,
+    // silently shifting every position/normal float read for the block.
+    // `buildTessellationBlock` always writes a real `12, 100, 2, TOTAL`
+    // tail, so this only needs a block whose own total is 12 to exercise
+    // the collision.
+    const positions = [
+      0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 2, 0, 0, 2, 1, 0, 3, 0, 0, 3, 1, 0, 4,
+      0, 0, 4, 1, 0, 5, 0, 0, 5, 1, 0,
+    ];
+    const block = buildTessellationBlock([4, 8], positions, unitNormals(12));
+
+    const mesh = decodeTessDataStream(block);
+
+    expect(Array.from(mesh.positions)).toEqual(positions);
   });
 
   it("matches research/d9-decode.py's own vertex and triangle counts for a real NIST part", () => {

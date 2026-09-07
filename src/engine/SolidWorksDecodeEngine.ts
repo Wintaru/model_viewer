@@ -695,6 +695,17 @@ function readStripSizes(
  * The tail ends with the vertex total, found within a few words of the
  * strip-size list rather than immediately after it. Returns the word index
  * right after the matching one — where the position floats begin.
+ *
+ * The literal `2` immediately before `total` is load-bearing, not optional
+ * (the tail layout is `a, b, 2, TOTAL`) — matching on `total` alone finds
+ * the wrong word whenever a block's own vertex count happens to equal `a`,
+ * the tail's leading constant word (observed value `12`, on a real
+ * customer part where three small blocks each tessellated to exactly 12
+ * vertices). That silently shifted `dataStartWord` three words early, so
+ * every position/normal float read for that block came from the wrong
+ * bytes — still valid-looking on their own (real coordinates, near-unit
+ * normals) but numerically wrong, corrupting that block's winding and
+ * geometry without tripping any other check (DECISIONS.md).
  */
 function findWordAfterTotalMarker(
   view: DataView,
@@ -707,8 +718,13 @@ function findWordAfterTotalMarker(
     tailStartWord + TAIL_SEARCH_WINDOW_WORDS,
     wordCount,
   );
-  for (let word = tailStartWord; word < searchEnd; word++) {
-    if (readU32(view, align + word * BYTES_PER_WORD) === total) {
+  for (let word = tailStartWord + 1; word < searchEnd; word++) {
+    const precededByLiteralTwo =
+      readU32(view, align + (word - 1) * BYTES_PER_WORD) === 2;
+    if (
+      precededByLiteralTwo &&
+      readU32(view, align + word * BYTES_PER_WORD) === total
+    ) {
       return word + 1;
     }
   }

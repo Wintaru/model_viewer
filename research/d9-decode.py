@@ -183,11 +183,18 @@ def _scan(blob, align, verbose=False):
             continue
         total = sum(sizes)
 
-        # The tail ends with the vertex total. Find it within a few words.
+        # The tail ends with the vertex total, preceded by a literal 2
+        # ("a, b, 2, TOTAL"). The literal is load-bearing, not optional:
+        # matching on `total` alone finds the wrong word whenever a block's
+        # own vertex count happens to equal `a` (observed: total == 12,
+        # coinciding with the tail's own leading constant), silently
+        # shifting every position/normal float that follows -- see the
+        # matching comment on SolidWorksDecodeEngine.ts's
+        # findWordAfterTotalMarker.
         tail = i + 4 + n_loops
         pos = None
-        for k in range(tail, min(tail + 8, words)):
-            if u[k] == total:
+        for k in range(tail + 1, min(tail + 8, words)):
+            if u[k - 1] == 2 and u[k] == total:
                 pos = k + 1
                 break
         if pos is None:
