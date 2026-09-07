@@ -13,6 +13,7 @@ Run order, and what each one settles.
 | `d8-final.py` | Does a cached display mesh exist? (Yes.) |
 | `d8-analyze.py` | Same analysis against one directory of streams. |
 | `d14-marker-scan.py` | Can the container's real structure be read directly, instead of scanning every byte for a compressed stream? (Yes — a documented open-source reader's chunk format, validated against every sample file: 2-95ms instead of 45-60s to several minutes.) |
+| `d22-definition-probe.py` | A drawing's real content sits in its `Contents/Definition` chunk. Is that chunk legible, or encoded a second time? (Legible — 3.2 bits of entropy per byte, and a self-describing object stream that writes all 132 of its own class names in plaintext.) |
 
 ## Run the control first
 
