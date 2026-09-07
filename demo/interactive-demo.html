@@ -68,6 +68,25 @@
         opacity: 0.4;
         cursor: not-allowed;
       }
+      #repair-button {
+        padding: 8px 14px;
+        border: 1px solid #666;
+        border-radius: 6px;
+        background: transparent;
+        color: #e8e8e8;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      #repair-button:hover {
+        border-color: #4da3ff;
+        color: #4da3ff;
+      }
+      #repair-button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        border-color: #666;
+        color: #e8e8e8;
+      }
       #status {
         margin: 0;
         padding: 8px 12px;
@@ -96,6 +115,7 @@
         <option value="wireframe">Wireframe</option>
         <option value="points">Points</option>
       </select>
+      <button id="repair-button" type="button" disabled>Fix small gaps</button>
       <pre id="status">Loading…</pre>
     </div>
     <script src="interactive-demo.bundle.js"></script>

@@ -192,6 +192,52 @@ scope by absence of a decision, not by absence of a path. See D12.
   documented, supported format (this note is about what the code does, not
   what the product promises — the remaining D12 sub-questions below, viewing
   and the 2018-only caveat, are still open either way).
+- **D15 — Close small tessellation-seam gaps, only from real boundary
+  vertices, disclosed rather than silent, 2026-09-07.** Grew out of the D7
+  render-mode toggle: using it on `customer part A` (real customer
+  part, DECISIONS.md) surfaced a dark region Josh suspected was a missing
+  face. Pixel-sampling and a live `DoubleSide` backface-culling test proved
+  that specific region was real, correctly-wound geometry (just dimly lit) —
+  but a real watertightness check (every edge of a closed surface should be
+  shared by exactly two triangles) found something genuine elsewhere: 77
+  boundary edges forming 6 small loops, most plausibly SolidWorks
+  tessellating each face independently and not sampling a shared curve (a
+  hole rim, say) identically on both sides. Josh: other viewers paper over
+  exactly this, and asked to mimic it — "for free" (using only vertices
+  already in the decode, never inventing a position) rather than guessing.
+
+  Shipped `src/repair/index.ts` (`repairSmallGaps`) as a third pure adapter
+  alongside `/three` and `/2d` (ARCHITECTURE.md section 2) — depends only on
+  Common, called explicitly by a consumer (a "Fix small gaps" button in
+  `interactive-demo.html`, matching Josh's own framing), never automatic
+  during decode. Finds boundary loops via a snap-merge across each mesh's
+  own vertices, caps each with a triangle fan over the loop's real vertices
+  plus one synthesized centroid, and skips (reporting via `diagnostics`
+  rather than guessing) any loop too large relative to the *model's own*
+  bounding diagonal — Josh's explicit choice over a fixed-mm threshold, so
+  the same default behaves sensibly at any part scale. Patch triangles get
+  a distinct colour (a visible orange) via a new `FaceRange`, so a repaired
+  region never blends silently into real geometry — the same disclosure
+  principle as the diagnostic itself.
+
+  One real, hand-verified subtlety: fanning a hole's boundary using the
+  vertex order its edges are naturally found in produces an **inverted**
+  (inward-facing) patch — confirmed by working an example by hand, not
+  assumed (DECISIONS.md) — so the fan reverses that order at the point of
+  triangle construction. A unit test asserts patch normals agree in sign
+  with the real geometry they replace, specifically to catch a regression
+  here.
+
+  Verified against the real file that prompted this: the watertightness
+  check found the same 6 loops the manual investigation already had. At the
+  library's own conservative default (5% of the model's bounding diagonal)
+  all 6 were correctly left alone as too large. At 15% — verified by hand to
+  visibly close two real gaps at the part's bolt holes without touching the
+  unrelated dim face — 4 of 6 filled, 2 still correctly held back. The demo
+  button uses 15%, chosen deliberately looser than the library's own
+  default: a consciously-invoked, visually-inspectable, reversible (reload
+  the file) action affords more latitude than a default a caller might never
+  look at twice.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP bounding
   box. See `DECISIONS.md`.

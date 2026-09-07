@@ -120,6 +120,14 @@ export default {
       from: { path: "^src/2d/" },
       to: { path: "^src/(manager|engine|accessor|utility)/" },
     },
+    {
+      name: "no-repair-adapter-outbound",
+      comment:
+        "Same rule as no-three-adapter-outbound, for the /repair adapter (D15, WAYFINDER.md): a pure DecodedModel-to-DecodedModel transform, not a layer in the loading pipeline.",
+      severity: "error",
+      from: { path: "^src/repair/" },
+      to: { path: "^src/(manager|engine|accessor|utility)/" },
+    },
   ],
   options: {
     // Test files aren't part of the runtime layer graph the rules above

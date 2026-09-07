@@ -35,8 +35,14 @@ The three.js adapter (`/three`, SPEC.md section 7a) sits outside the graph
 below entirely, rather than as a sixth layer: it depends only on the neutral
 model (Common), never on Manager, Engine or Accessor, so a caller doing
 headless work — thumbnails, measurement, export — never pulls in three.js
-(D10, SPEC.md section 8). `no-three-adapter-outbound` in
-`.dependency-cruiser.js` enforces this the same way the table below enforces
+(D10, SPEC.md section 8). Two siblings follow the exact same shape: `/2d`
+(D6, WAYFINDER.md), the equivalent adapter for a 2D drawing's `LineSegments`,
+and `/repair` (D15, WAYFINDER.md), a pure `DecodedModel`-to-`DecodedModel`
+transform that closes small tessellation-seam gaps a caller explicitly asks
+for — depending only on Common, so headless work never pulls either in for
+free. `no-three-adapter-outbound`, `no-2d-adapter-outbound` and
+`no-repair-adapter-outbound` in `.dependency-cruiser.js` enforce this the
+same way the table below enforces
 everything else.
 
 ```mermaid
@@ -93,6 +99,8 @@ nothing itself.
 | Engine to Accessor | Engine to Engine, Engine to Manager |
 | Anything to Utility | Accessor to anything but Utility |
 | `/three` adapter to Common (only) | `/three` adapter to Manager, Engine, Accessor or Utility |
+| `/2d` adapter to Common (only) | `/2d` adapter to Manager, Engine, Accessor or Utility |
+| `/repair` adapter to Common (only) | `/repair` adapter to Manager, Engine, Accessor or Utility |
 
 A layering rule that lives only in a document drifts, and it still compiles.
 These **will be** enforced with `dependency-cruiser`, so a boundary-crossing
