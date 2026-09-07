@@ -20,10 +20,20 @@ inside a SolidWorks file uses ordinary deflate compression, not encryption,
 and it holds a display mesh SolidWorks itself already computed and cached.
 
 This decoder is checked against the NIST test corpus, a public set of CAD
-files. Six of eleven NIST test parts reproduce the bounding box measured
-from their STEP twin, within 2 percent or 0.5 mm. This result covers parts
-only. Assemblies are untested. Only SolidWorks 2018 is reproducible from
-this repository.
+files. Seven of eleven NIST test parts reproduce the bounding box measured
+from their STEP twin, within 2 percent or 0.5 mm. Only SolidWorks 2018 is
+reproducible from this repository.
+
+Assemblies (`.SLDASM`) decode too, but that result is narrower. It is
+measured against real assembly files that this repository cannot ship, so
+you cannot reproduce it here. Assemblies that use the same component more
+than once are unverified. See `WAYFINDER.md` for the specific risk.
+
+Drawings (`.SLDDRW`) are **not supported**, and the library does not
+currently say so. A drawing file opens, and what comes back is the 3D model
+the drawing refers to, repeated once per view — not the drawing. Do not use
+this library to read drawings yet. `WAYFINDER.md` decisions D21 and D22
+cover why, and what a real drawing reader needs.
 
 IGES support detects the format correctly and reports failures honestly, but
 no IGES file with real solid geometry has been verified yet. See
@@ -36,7 +46,8 @@ no IGES file with real solid geometry has been verified yet. See
 | STEP | OCCT, through WebAssembly | Verified against the NIST STEP corpus. |
 | IGES | OCCT, through WebAssembly | Format detection and failure handling are verified. A real solid-geometry decode is not yet verified — see above. |
 | SolidWorks parts (`.SLDPRT`) | This project's own decoder | Verified as described above. |
-| SolidWorks assemblies (`.SLDASM`) | This project's own decoder | Untested. |
+| SolidWorks assemblies (`.SLDASM`) | This project's own decoder | Decodes real assemblies. Repeated instances of one component are unverified — see above. |
+| SolidWorks drawings (`.SLDDRW`) | Not supported | A drawing opens and returns the referenced 3D model, not the drawing. See above. |
 | STL (binary) | Hand-written parser | Verified. |
 | STL (ASCII) | Not yet supported | Reports a clear diagnostic instead of a wrong result. |
 | DXF | This project's own parser | Lines, circles, arcs, and straight polyline segments, grouped by layer. Curved polyline segments and block references are not yet supported. |

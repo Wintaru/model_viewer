@@ -8,11 +8,14 @@ The interesting part: **native SolidWorks files decode without SolidWorks,
 without Parasolid, and without a commercial SDK.** The container is deflate, not
 encryption, and it holds a cached tessellation.
 
-Be careful how you restate that. What is actually verified: 6 of 11 NIST test
+Be careful how you restate that. What is actually verified: 7 of 11 NIST test
 parts reproduce the bounding box measured from their STEP twin, within 2 percent
-or 0.5 mm. **Parts only — assemblies are untested**, and only SolidWorks 2018 is
-reproducible from this repository. Do not promise more than that in a README, a
-package description or a pull request.
+or 0.5 mm, and only SolidWorks 2018 is reproducible from this repository.
+Assemblies decode as well, but only against real files this repository cannot
+ship, and an assembly that repeats one component is unverified (WAYFINDER.md's
+D20). **Drawings are not supported at all** — a `.SLDDRW` opens and silently
+returns the referenced 3D model instead of the drawing (D21). Do not promise
+more than that in a README, a package description or a pull request.
 
 ## Read these first
 
@@ -41,8 +44,13 @@ is likewise absent from a fresh clone.
 
 `git log --oneline` shows what has landed. `SPEC.md` section 10 has the plan.
 
-Slices 1 to 5 are unblocked. Slice 6 (DXF) waits on decision D6. The demo in
-slice 1 is a smoke demo only; the viewer's real shape is D7 and still open.
+**Version 1 is complete as of 2026-09-07** (Josh's call, closing D21): STEP,
+IGES, SolidWorks parts and assemblies, mesh formats, DXF. All six slices are
+built. Everything still open in `WAYFINDER.md` is post-v1 and blocks nothing.
+
+The active work is **D22 — reverse-engineering `Contents/Definition`**, the
+chunk that holds a drawing's real content. Read D21 first for what is already
+measured, so you do not repeat it.
 
 ## Constraints that are easy to violate
 

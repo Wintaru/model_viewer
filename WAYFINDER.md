@@ -20,6 +20,12 @@ promised SLDDRW, which is now out of scope: no open path to it exists.
 tessellation cache, the same shortcut SLDPRT uses). SLDDRW is out of v1
 scope by absence of a decision, not by absence of a path. See D12.
 
+**Settled 2026-09-07 — D21 closed this.** That path leads somewhere else: the
+cached tessellation in a drawing belongs to the referenced *model*, not to the
+drawing, so it can never render a drawing however well it decodes. Version 1
+ships without SLDDRW and is otherwise complete. The real drawing data is in a
+different chunk, and reverse-engineering it is now the active work — D22.
+
 ## Decisions so far
 
 - **D0 — The deliverable is an embeddable npm library, 2026-09-04 12:14.**
@@ -78,6 +84,15 @@ scope by absence of a decision, not by absence of a path. See D12.
   [issue #2](https://github.com/Wintaru/model_viewer/issues/2): SLDDRW is no
   longer "no open path," it is an untaken one. Whether it actually joins v1
   is a separate call — see D12.
+
+  **⚠️ Corrected 2026-09-07 14:03 — true at the byte level, misleading about
+  meaning. See D21, below.** The cache a drawing carries is the referenced
+  *model's* tessellation, held once per view that shows shaded geometry, all
+  in model space with no view placement. Measured: a drawing returns exactly
+  twice its own part's vertex and triangle counts, on two separate real
+  files. So this is not "the same shortcut SLDPRT uses" pointed at a drawing —
+  it is the SLDPRT shortcut returning SLDPRT data out of a drawing file. The
+  path it opens does not lead to a drawing.
 - **D12 (partial) — SLDDRW extraction needs real container parsing, not a
   bounded version of the existing blind scan, 2026-09-06 17:52.** The blind
   byte-by-byte deflate scan (`collect`/`inflateAll` in
@@ -192,6 +207,14 @@ scope by absence of a decision, not by absence of a path. See D12.
   documented, supported format (this note is about what the code does, not
   what the product promises — the remaining D12 sub-questions below, viewing
   and the 2018-only caveat, are still open either way).
+
+  **⚠️ Corrected 2026-09-07 14:03 — every measurement above still holds, and
+  "both SLDDRW files decoded successfully" reads as more than it proved. See
+  D21, below.** What that run verified was the *container parser*, which does
+  work on drawings, in milliseconds, exactly as claimed. Nobody checked what
+  the resulting mesh depicted. It depicts stacked copies of the referenced 3D
+  model, so the honest reading of this entry is "a drawing's container opens
+  and yields a decodable mesh," not "SLDDRW works."
 - **D15 — Close small tessellation-seam gaps, only from real boundary
   vertices, disclosed rather than silent, 2026-09-07.** Grew out of the D7
   render-mode toggle: using it on `customer part A` (real customer
@@ -450,6 +473,53 @@ scope by absence of a decision, not by absence of a path. See D12.
   SolidWorks version — multi-component assemblies, nested sub-assemblies,
   and suppressed components remain unchecked, so this narrows the existing
   "test SLDASM" frontier item rather than closing it (see below).
+- **D21 — A drawing's cached tessellation is the referenced model's, not the
+  drawing's. Version 1 closes without SLDDRW, and the real drawing chunk
+  becomes the next research program, 2026-09-07 14:03.** Closes D12. Josh
+  reported that SLDDRW files "render as 3D parts with extra stuff in them."
+  They do, and the reason is structural, not a decoding defect.
+
+  Three measurements settled it, all against real customer drawings
+  (gitignored, aggregates only — see `DECISIONS.md` for the numbers):
+
+  1. **What we render is N copies of the referenced model.** A drawing
+     returns exactly twice its own part's vertex and triangle counts, on two
+     separate files — `Contents/VBLists` caches the model's tessellation once
+     per view that holds shaded geometry, in model space, with no view
+     placement applied. An assembly drawing does the same at scale (220,028
+     vertices). Stacked model copies is precisely the reported symptom.
+  2. **The drawing's real content is in a chunk nothing here parses.**
+     `Contents/Definition` is 786,808 bytes decompressed in a 215 KB drawing
+     (against 10,166 for the same chunk in a part) and holds zero `4,8,2,N`
+     tessellation headers on any alignment. Sheets, views, projected edges,
+     dimensions and the title block all live there.
+  3. **The one free raster path has a low ceiling.** Every drawing carries
+     `Images/Sheet_0`, a real PNG of the laid-out sheet — verified by eye,
+     with the views, dimension lines and title block all correctly placed.
+     But it is fixed at 640x480 on every file checked (215 KB through
+     13.5 MB), so the dimension text and title block are illegible. It is a
+     thumbnail, not a viewable drawing.
+
+  **Decision: reverse-engineer `Contents/Definition`.** Josh's call, given
+  three framed options (detect SLDDRW and fail honestly, keeping it out of
+  v1 / do that plus surface the 640x480 sheet thumbnail as a labelled
+  preview / reverse-engineer the real chunk). The thumbnail path was
+  rejected because it buys a preview rather than a drawing, at the cost of a
+  raster-sheet concept in the neutral model and both adapters that nothing
+  else needs. Failing honestly was rejected as the destination, not as a
+  step — it settles for less than the project has already proved it can
+  reach twice. **Version 1 is declared complete as it stands** (STEP, IGES,
+  SolidWorks parts and assemblies, mesh formats, DXF), so this research is
+  post-v1 work and blocks nothing. Opened as **D22**, below.
+
+  **One live defect this leaves standing, deliberately, and it should not
+  stay standing long:** today a SLDDRW decodes to stacked model copies and
+  reports *zero* diagnostics — silent success on a wrong result, the exact
+  failure mode `src/common/Diagnostic.ts` names as the worst one. D22
+  supersedes it if it lands. Until then a v1 that ships this is a v1 that
+  lies about drawings. Flagged for Josh rather than fixed inside this
+  decision, since he chose the research path over the stopgap and the two
+  are not exclusive.
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP
   bounding box. **Updated 2026-09-07 — see D16, above: now 7 of 11**, after
@@ -466,6 +536,12 @@ scope by absence of a decision, not by absence of a path. See D12.
 The settled decisions are bundled into **`SPEC.md`** (2026-09-04 12:27): layer
 map, neutral geometry model, public API, packaging, and a six-slice build
 order. All six slices are now unblocked; D6 settled slice 6 on 2026-09-06.
+
+**Version 1 is complete, 2026-09-07 (Josh, closing D21).** It reads STEP,
+IGES, SolidWorks parts and assemblies, common mesh formats, and DXF. SLDDRW
+is not in it and does not hold it up — see D21. Everything still open below
+is post-v1 work. Publishing the package is tracked separately, outside this
+map.
 
 ## Not yet specified — the frontier
 
@@ -529,7 +605,18 @@ Narrow and concrete. Find out whether OCCT can read `COMPLEX_TRIANGULATED_FACE`
 through a different call, or whether this needs a separate reader. At minimum,
 detect the case and report it honestly.
 
-### D12 — Does SLDDRW join v1, and what does decoding and viewing it need? `[research]`
+### D12 — Does SLDDRW join v1? ✅ **Closed 2026-09-07 — see D21, above.**
+
+No. The cached tessellation a drawing carries belongs to the referenced
+model, not to the drawing, so it could never render one however well it
+decoded. The viewing sub-question below never needed answering in the shape
+it was asked: there is nothing to lay out on sheets, because the geometry we
+recover is not the drawing's. Reverse-engineering `Contents/Definition` is
+the live work now — **D22**, below.
+
+The original ticket text follows, unedited, as the record of what was asked.
+
+---
 
 D11 settled the technical question: a decodable tessellation cache exists.
 This is the scope question that follows it, same shape as D2 (SolidWorks
@@ -596,6 +683,49 @@ currently take 45-60 seconds (research-script figure) to several minutes
 blocker on anything already shipped in the sense of "broken" — SLDPRT
 decoding works — but a large, validated performance win available for it,
 independent of whether SLDDRW itself ever joins v1.
+
+### D22 — Can `Contents/Definition` be read? `[research]` — post-v1
+
+Opened 2026-09-07 by D21. This is the only path to a real SolidWorks drawing
+viewer: vector views with readable dimensions, not a thumbnail and not the
+3D model the drawing happens to cache.
+
+What is known, from D21's measurements:
+
+- Every drawing has exactly one `Contents/Definition` chunk. It decompresses
+  cleanly through the existing `SolidWorksContainerUtil` — 786,808 bytes in a
+  215 KB drawing, against 10,166 for the same chunk in a part. Size scales
+  with drawing complexity, which is the right signal.
+- It holds no `4,8,2,N` tessellation headers on any byte alignment, so none
+  of this project's existing block decoders apply to it.
+- Sheets, views, projected edges, dimensions, annotations and the title
+  block are all unaccounted for elsewhere in the container, so they are
+  almost certainly in here.
+
+What makes this harder than the tessellation cache was, stated up front so
+the difficulty is not rediscovered:
+
+- **No magic-number anchor.** D8 through D14 all worked from a known
+  fingerprint (`uoTempFaceTessData_c`, the `4,8,2,N` header, the
+  `14 00 06 00 08 00` chunk marker). Nothing comparable is known here.
+- **No prior art.** `openswx` parses metadata and BOM tables only, never
+  drawing geometry. D13 already established no public spec exists for the
+  modern container, and the same is true a level down.
+- **No ground truth of the D9 kind.** Parts could be checked against a STEP
+  twin's bounding box. A drawing has no neutral twin — though each real
+  drawing in the customer corpus ships beside a PDF of itself, and the
+  cached 640x480 `Images/Sheet_0` gives a correct, if low-resolution,
+  picture of the expected layout. Both are checkable references.
+
+First concrete steps, in order:
+
+1. Characterise the chunk: entropy, repeated record headers, any embedded
+   ASCII tags of the `uoTemp*` family, and whether structure is visible at
+   all or the payload is further encoded.
+2. Diff two drawings of the *same* part that differ in one known way (an
+   added dimension, an extra view) to localise what encodes what.
+3. Only then decide whether this is tractable. Report honestly if it is not
+   — v1 does not depend on the answer.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 
