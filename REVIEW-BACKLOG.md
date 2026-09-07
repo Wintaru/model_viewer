@@ -91,6 +91,14 @@ defects below wrong, only lower priority.
 - **`sldprt-triage.py` cites a "9-part NIST corpus"** while `assets/README.md`
   documents 11 SLDPRT files. Both are true — the bytes-per-triangle table covers
   9 — but say "9 of the 11".
+- **"Assemblies are untested" is now stale** (`ARCHITECTURE.md`:421, `SPEC.md`:454,
+  458, 654). WAYFINDER.md's D20 (2026-09-07) fixed and verified real SLDASM
+  decoding — one real customer assembly, one SolidWorks version, one component
+  per file — so "untested" overstates the gap and "parts only" understates
+  current scope. The accurate claim (SLDASM decoding works but is far more
+  narrowly verified than SLDPRT: no multi-component assembly, no nested
+  sub-assembly, no suppressed component checked yet) belongs in WAYFINDER.md's
+  frontier section, not restated here piecemeal in these frozen planning docs.
 
 ## From building slice 1 commit 5 — Common types (2026-09-05)
 

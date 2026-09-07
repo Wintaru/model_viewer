@@ -140,6 +140,29 @@ describe("extractTessDataStreams", () => {
 
     expect(extractTessDataStreams(file)).toEqual([]);
   });
+
+  it("recovers a real assembly's per-component chunk by its FaceTessellations/ name, even without the TessData magic", () => {
+    // DECISIONS.md D20: a real assembly's own `Contents/DisplayLists` does
+    // carry the `TessData` substring, but only in unrelated display-state
+    // tags -- its actual per-component tessellation lives in a separate
+    // `FaceTessellations/<id>` chunk that carries no such substring at all,
+    // so this can only be found by chunk name, not content-sniffing.
+    const withoutMagic = new Uint8Array(1_000).fill(0x42);
+    const file = buildSolidWorksFile([
+      { name: "FaceTessellations/000-000-005", payload: withoutMagic },
+    ]);
+
+    expect(extractTessDataStreams(file)).toEqual([withoutMagic]);
+  });
+
+  it("still discards an unrelated chunk with neither the magic nor a FaceTessellations/ name", () => {
+    const withoutMagic = new Uint8Array(1_000).fill(0x42);
+    const file = buildSolidWorksFile([
+      { name: "Contents/CusProps", payload: withoutMagic },
+    ]);
+
+    expect(extractTessDataStreams(file)).toEqual([]);
+  });
 });
 
 /**

@@ -413,6 +413,43 @@ scope by absence of a decision, not by absence of a path. See D12.
   solids. Full verify green (tsc, eslint, depcruise, prettier, vitest — 218
   tests). See DECISIONS.md for the instrumentation approach and full
   detail.
+- **D20 — SLDASM (assembly) decoding never actually worked; the chunk
+  holding real geometry doesn't carry the `TessData` magic at all,
+  2026-09-07.** Josh loaded a real assembly and got the generic
+  "no valid tessellation block decoded" error — correctly questioning
+  whether SLDASM had ever really been made to work, since the engine's own
+  docstring already said it was untested. It hadn't: only container-level
+  chunk *extraction* (D14) had been verified across SLDPRT/SLDASM/SLDDRW
+  alike, never that the tessellation-block *decode* stage produces real
+  geometry for an assembly. Listing every chunk in the real file (name,
+  size, whether it contains `TessData`) found the actual cause: an
+  assembly's `Contents/DisplayLists` chunk does contain the `TessData`
+  substring, but only inside unrelated display-state tags
+  (`uoTempAssemblySHDData_c` and friends) — a byte-level scan for the real
+  "4, 8, 2, N" header found zero matches in it. The real per-component
+  geometry instead lives in a separate `FaceTessellations/<id>` chunk (one
+  per component) that carries no `TessData` substring anywhere, so
+  content-sniffing alone can never find it.
+
+  Fixed by widening `extractTessDataStreams`'s chunk filter to also accept
+  a chunk by name prefix (`FaceTessellations/`), alongside the existing
+  content-sniff. No change to the actual block-parsing logic at all — the
+  real component chunk decoded correctly on the first try with the
+  completely unmodified scanner (7,008 vertices, 4,772 triangles). Verified
+  additive and risk-free for parts: no real SLDPRT file checked has any
+  `FaceTessellations/*` chunk, so the new branch is structurally inert for
+  the already-verified part path.
+
+  Verified across the whole real corpus, not just Josh's one file: all 36
+  SLDASM files in the customer folder now decode with real, non-zero
+  triangle output (796 to 352,894 triangles); the existing 62-file SLDPRT
+  sweep still passes 62/62, confirming no regression. Confirmed visually in
+  the real browser demo: Josh's reported file now renders as a complete
+  solid. Full verify green (tsc, eslint, depcruise, prettier, vitest — 220
+  tests). Still open, stated plainly: only one real assembly, one
+  SolidWorks version — multi-component assemblies, nested sub-assemblies,
+  and suppressed components remain unchecked, so this narrows the existing
+  "test SLDASM" frontier item rather than closing it (see below).
 - **D9 — The tessellation cache decodes into triangles, 2026-09-04 09:24.**
   Layout known and verified: 6 of 11 NIST parts reproduce their STEP
   bounding box. **Updated 2026-09-07 — see D16, above: now 7 of 11**, after
@@ -443,8 +480,21 @@ which block building:
   correctly but report an oversized bounding box because annotation geometry
   is mixed in.
 - Explain `nist_ftc_11`, which reports a box that is too small. A real miss.
-- Test more SolidWorks versions, and test SLDASM. Only parts are proven, and
-  only on 2018 and 2020.
+- Test more SolidWorks versions. Only parts are proven, and only on 2018 and
+  2020. **Narrowed 2026-09-07, see D20, below: SLDASM decoding itself is no
+  longer untested** — one real customer assembly now decodes and renders
+  correctly — but assemblies with multiple components, nested
+  sub-assemblies, or suppressed components remain unchecked, and the
+  SolidWorks-version caveat still applies equally to assemblies. **A
+  specific, named risk for the multi-component case, not just "unchecked"
+  in general** (2026-09-07 code review of D20): a real assembly with two
+  identical component instances (the same screw twice) could produce two
+  byte-identical `FaceTessellations/*` chunks — `extractTessDataStreams`'s
+  `dedupeByBytes` would then collapse them into one, silently dropping one
+  instance's geometry, with no error and no diagnostic. Resolving this
+  needs a real multi-component file to check against (does the cached
+  tessellation bake in each instance's placement, or is dedup itself wrong
+  once `FaceTessellations/*` chunks are in scope?), not a speculative fix.
 
 ### IGES follow-up `[research]` — not blocking v1
 

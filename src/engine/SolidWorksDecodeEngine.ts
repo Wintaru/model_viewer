@@ -6,6 +6,14 @@ import {
 import { extractModernContainerChunks } from "../utility/SolidWorksContainerUtil";
 
 const TESS_DATA_MAGIC = "TessData";
+// An assembly's own `Contents/DisplayLists` chunk does carry the `TessData`
+// substring (D14's content-sniff finds it), but only as part of unrelated
+// display-state bookkeeping tags (`uoTempAssemblySHDData_c`, ...) -- it has
+// no real "4, 8, 2, N" tessellation headers at all. A real assembly's
+// per-component triangle data instead lives in one `FaceTessellations/<id>`
+// chunk per component (DECISIONS.md D20), which carries no `TessData`
+// substring of its own, so content-sniffing alone misses it entirely.
+const FACE_TESSELLATIONS_PREFIX = "FaceTessellations/";
 
 /**
  * Recovers every stream holding SolidWorks's cached tessellation, from a
@@ -24,15 +32,23 @@ const TESS_DATA_MAGIC = "TessData";
  * is deliberate, not a leftover from the old scan: different SolidWorks
  * document types were found to use different chunk names for the same
  * cached-mesh content (D14), so content-sniffing is what actually
- * generalizes across them, not a name allowlist.
+ * generalizes across them, not a name allowlist. That still isn't the whole
+ * story for assemblies, though (D20): a real component's tessellation lives
+ * under a `FaceTessellations/<id>` chunk name that carries no `TessData`
+ * substring of its own, so those are matched by name prefix instead —
+ * a chunk with no valid tessellation block inside it (like the sibling
+ * `FaceTessellations/Directory` index) simply decodes to zero triangles
+ * downstream, exactly like any other candidate stream that turns out empty.
  */
 export function extractTessDataStreams(
   fileBytes: Uint8Array,
 ): readonly Uint8Array[] {
-  const withMagic = extractModernContainerChunks(fileBytes)
-    .map((chunk) => chunk.data)
-    .filter((data) => containsAscii(data, TESS_DATA_MAGIC));
-  return dedupeByBytes(withMagic);
+  const matching = extractModernContainerChunks(fileBytes).filter(
+    (chunk) =>
+      containsAscii(chunk.data, TESS_DATA_MAGIC) ||
+      chunk.name.startsWith(FACE_TESSELLATIONS_PREFIX),
+  );
+  return dedupeByBytes(matching.map((chunk) => chunk.data));
 }
 
 function containsAscii(bytes: Uint8Array, text: string): boolean {
@@ -840,8 +856,18 @@ const METRES_TO_MILLIMETRES = 1000;
  * otherwise lose precision (a failure would only say "transform() is wrong
  * somewhere," not which stage). See DECISIONS.md.
  *
- * SLDASM (assemblies) are untested — WAYFINDER.md's D9 follow-up — so this
- * is scoped to parts, matching SPEC.md section 10's own slice-3 ordering.
+ * SLDASM (assemblies) now decode too (WAYFINDER.md's D20), but far more
+ * narrowly than parts: verified against exactly one real, single-component
+ * assembly. Multi-component assemblies, nested sub-assemblies, and
+ * suppressed components are all unverified — in particular, a real
+ * assembly with two identical component instances (the same screw used
+ * twice) could plausibly produce two byte-identical `FaceTessellations/*`
+ * chunks that `dedupeByBytes` above would then collapse into one, silently
+ * dropping one instance's geometry. Nothing currently distinguishes that
+ * case from the legitimate two-different-names-one-real-stream case
+ * content-based dedup exists for (see `extractTessDataStreams`'s own
+ * comment) — resolving it needs a real multi-component file to check
+ * against, not a guess.
  */
 export class SolidWorksDecodeEngine {
   transform(bytes: Uint8Array): DecodedModel {
