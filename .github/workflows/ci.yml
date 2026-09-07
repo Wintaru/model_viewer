@@ -1,0 +1,104 @@
+name: CI
+
+# Runs the same gate a contributor runs locally (`pnpm run verify`), then
+# checks the things only a release cares about: that the compiled output
+# loads, and that it still loads once it has been through a tarball.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # The lowest version package.json's `engines.node` allows, and the
+        # newest release line. The range also allows >=26, which is not pinned
+        # here because it moves.
+        node-version: ["22.12.0", "24.x", "26.x"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The NIST corpus is not in git (assets/README.md, about 75 MB). Tests
+      # that need it skip when it is absent, so restoring it is what makes
+      # those cases run here instead of skipping. Restore and save are split
+      # so a red `verify` still saves a corpus that downloaded correctly —
+      # `actions/cache` alone saves only when the whole job passes, which
+      # would re-download from nist.gov after every failed run.
+      - uses: actions/cache/restore@v4
+        id: corpus
+        with:
+          path: assets
+          key: nist-corpus-${{ hashFiles('scripts/fetch-assets.sh') }}
+
+      - run: pnpm assets
+
+      - uses: actions/cache/save@v4
+        if: steps.corpus.outputs.cache-hit != 'true'
+        with:
+          path: assets
+          key: nist-corpus-${{ hashFiles('scripts/fetch-assets.sh') }}
+
+      - run: pnpm run verify
+
+      # `verify` passes when a corpus-backed test skips, which is correct for
+      # a contributor and wrong here: a failed fetch would leave the cases
+      # behind every SolidWorks and STEP claim unrun, and the job still green.
+      # This fails on any skip, so that cannot happen quietly.
+      - run: node scripts/check-no-skipped-tests.mjs
+
+      - run: pnpm run build
+
+      - run: pnpm run check:dist
+
+      # Everything above reads the working tree. This packs the tarball, installs
+      # it into a scratch project, and imports it by package name — the only step
+      # that sees what a consumer sees, including whether `files` left something
+      # out and whether the exports map resolves from outside the repository.
+      - name: Import the packed tarball as a consumer
+        run: |
+          set -euo pipefail
+          tarball="$(pwd)/$(npm pack --silent)"
+          scratch="$(mktemp -d)"
+          cd "$scratch"
+          npm init -y > /dev/null
+          npm pkg set type=module
+          npm install "$tarball" three
+          node --input-type=module -e '
+            const core = await import("@wintaru/part-viewer");
+            const three = await import("@wintaru/part-viewer/three");
+            const twoD = await import("@wintaru/part-viewer/2d");
+            for (const [name, mod, expected] of [
+              ["core", core, ["ModelLoader", "ModelExporter", "fromUrl"]],
+              ["three", three, ["toThree"]],
+              ["2d", twoD, ["toThreeDrawing"]],
+            ]) {
+              const missing = expected.filter((key) => !(key in mod));
+              if (missing.length > 0) {
+                throw new Error(`${name} is missing: ${missing.join(", ")}`);
+              }
+            }
+            console.log("the packed tarball imports correctly");
+          '
