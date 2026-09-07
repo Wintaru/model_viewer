@@ -56,6 +56,18 @@
         border-color: #4da3ff;
         color: #4da3ff;
       }
+      #render-mode {
+        padding: 8px 14px;
+        border: 1px solid #666;
+        border-radius: 6px;
+        background: #1d1f21;
+        color: #e8e8e8;
+        font-size: 13px;
+      }
+      #render-mode:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
       #status {
         margin: 0;
         padding: 8px 12px;
@@ -79,6 +91,11 @@
       </label>
       <input id="file-input" type="file" />
       <button id="clear-button" type="button">Clear</button>
+      <select id="render-mode" disabled>
+        <option value="solid">Solid</option>
+        <option value="wireframe">Wireframe</option>
+        <option value="points">Points</option>
+      </select>
       <pre id="status">Loading…</pre>
     </div>
     <script src="interactive-demo.bundle.js"></script>

@@ -27,13 +27,17 @@ import {
   AmbientLight,
   Box3,
   DirectionalLight,
+  Mesh,
   Object3D,
   OrthographicCamera,
   PerspectiveCamera,
+  Points,
+  PointsMaterial,
   Scene,
   Sphere,
   Vector3,
   WebGLRenderer,
+  type Material,
 } from "three";
 // three ships this as a real ESM module under examples/jsm — not part of
 // the core `three` package export map, so a real consumer's bundler
@@ -235,11 +239,102 @@ function disposeObject3D(root: Object3D): void {
   });
 }
 
+/** WAYFINDER.md D7's render-mode toggle: solid (the default, `toThree`'s own
+ * shaded `Mesh`), wireframe (the same `Mesh`, `material.wireframe` toggled
+ * on), or points (a `Points` sibling swapped in for it). Not a discriminated
+ * union of richer variants — plain UI state with nothing to carry beyond
+ * which of the three is active — so a string literal union fits better than
+ * a `class`/object shape. */
+type RenderMode = "solid" | "wireframe" | "points";
+
+function isRenderMode(value: string): value is RenderMode {
+  return value === "solid" || value === "wireframe" || value === "points";
+}
+
+/** Fixed screen-space size (px) for the "points" mode's dots. Not scaled by
+ * distance (`sizeAttenuation: false`) — an arbitrary uploaded file could be
+ * authored at any real-world scale (millimetres to metres), and a
+ * distance-attenuated size would vanish or overwhelm the view depending on
+ * that scale and how far frame3DCamera happened to place the camera. */
+const POINT_SIZE_PX = 3;
+const POINT_COLOR = 0xffffff;
+
+/**
+ * `MeshStandardMaterial.wireframe` is the one flag this toggle needs, but
+ * `Mesh.material`'s static type is the base `Material`, which doesn't
+ * declare it — `buildMaterials` (src/three/index.ts) always builds
+ * `MeshStandardMaterial`s today, but duck-typing here (rather than an `as`
+ * assertion) means this keeps working, silently doing nothing instead of
+ * throwing, if that ever changes to a material type without the flag.
+ */
+function hasWireframeFlag(
+  material: Material,
+): material is Material & { wireframe: boolean } {
+  return "wireframe" in material;
+}
+
+interface ShapeMeshEntry {
+  readonly mesh: Mesh;
+  readonly points: Points;
+}
+
+/**
+ * Builds one hidden `Points` sibling per `Mesh` under `content`, sharing
+ * each mesh's own geometry rather than copying it, so "points" mode has
+ * something to show without decoding the model a second time. A drawing
+ * (every child is `LineSegments`, D6/toThreeDrawing) has no `Mesh` for this
+ * to find — its own line rendering already is the wireframe view, so the
+ * render-mode control is disabled for that case instead (see showModel).
+ */
+function buildShapeMeshEntries(content: Object3D): ShapeMeshEntry[] {
+  const entries: ShapeMeshEntry[] = [];
+  content.traverse((child) => {
+    if (!(child instanceof Mesh)) {
+      return;
+    }
+    const points = new Points(
+      child.geometry,
+      new PointsMaterial({
+        color: POINT_COLOR,
+        size: POINT_SIZE_PX,
+        sizeAttenuation: false,
+      }),
+    );
+    points.visible = false;
+    child.parent?.add(points);
+    entries.push({ mesh: child, points });
+  });
+  return entries;
+}
+
+/** Points added by {@link buildShapeMeshEntries} share their mesh's
+ * geometry, so `disposeObject3D`'s traversal disposes that geometry once per
+ * `Points`/`Mesh` pair — harmless, three.js's own `dispose()` is idempotent
+ * — while each `Points`'s own `PointsMaterial` still gets freed correctly. */
+function applyRenderMode(
+  entries: readonly ShapeMeshEntry[],
+  mode: RenderMode,
+): void {
+  for (const { mesh, points } of entries) {
+    mesh.visible = mode !== "points";
+    points.visible = mode === "points";
+    const materials = Array.isArray(mesh.material)
+      ? mesh.material
+      : [mesh.material];
+    for (const material of materials) {
+      if (hasWireframeFlag(material)) {
+        material.wireframe = mode === "wireframe";
+      }
+    }
+  }
+}
+
 function main(): void {
   const status = requiredElement<HTMLElement>("status");
   const fileInput = requiredElement<HTMLInputElement>("file-input");
   const dropZone = requiredElement<HTMLElement>("drop-zone");
   const clearButton = requiredElement<HTMLButtonElement>("clear-button");
+  const renderModeSelect = requiredElement<HTMLSelectElement>("render-mode");
   const viewport = requiredElement<HTMLElement>("viewport");
 
   const loader = new ModelLoader(
@@ -274,6 +369,8 @@ function main(): void {
   let camera: PerspectiveCamera | OrthographicCamera = defaultCamera();
   let controls = new OrbitControls(camera, renderer.domElement);
   let content: Object3D | undefined;
+  let shapeMeshEntries: ShapeMeshEntry[] = [];
+  let renderMode: RenderMode = "solid";
 
   function clear(): void {
     if (content !== undefined) {
@@ -281,6 +378,8 @@ function main(): void {
       disposeObject3D(content);
       content = undefined;
     }
+    shapeMeshEntries = [];
+    renderModeSelect.disabled = true;
     controls.dispose();
     camera = defaultCamera();
     controls = new OrbitControls(camera, renderer.domElement);
@@ -316,6 +415,14 @@ function main(): void {
       target = framed.target;
     }
     scene.add(content);
+
+    // A drawing is all LineSegments (D6) — there is no Mesh here for
+    // "wireframe"/"points" to apply to, and its line rendering already is
+    // the wireframe view, so the control is disabled rather than left to
+    // silently do nothing.
+    shapeMeshEntries = drawing ? [] : buildShapeMeshEntries(content);
+    renderModeSelect.disabled = drawing;
+    applyRenderMode(shapeMeshEntries, renderMode);
 
     controls = new OrbitControls(camera, renderer.domElement);
     // OrbitControls.target defaults to the world origin, not wherever the
@@ -363,6 +470,13 @@ function main(): void {
   });
 
   clearButton.addEventListener("click", clear);
+
+  renderModeSelect.addEventListener("change", () => {
+    if (isRenderMode(renderModeSelect.value)) {
+      renderMode = renderModeSelect.value;
+      applyRenderMode(shapeMeshEntries, renderMode);
+    }
+  });
 
   for (const eventName of ["dragenter", "dragover"]) {
     dropZone.addEventListener(eventName, (event) => {

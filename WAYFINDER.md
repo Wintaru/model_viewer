@@ -343,6 +343,16 @@ and stay small enough that its source reads as an example.
   yet, deliberately (Josh: "don't build it, just add it to our TODO
   list") — logged here since it's squarely a D7 viewer-feel question, not
   a separate decision.
+  **Built 2026-09-07.** A `<select>` in `interactive-demo.html`'s panel;
+  wireframe toggles `MeshStandardMaterial.wireframe` on `toThree`'s own
+  `Mesh` objects, points swaps in a hidden `Points` sibling (sharing the
+  same `BufferGeometry`, so nothing decodes twice) built once per loaded
+  shape. Scoped to 3D shapes only — a drawing is already all
+  `LineSegments` (D6), so the control disables itself (keeping whatever
+  mode was last picked) whenever `isDrawing(model)` is true. Verified by
+  hand in a real browser against a NIST fixture: wireframe showed the
+  triangle-strip structure exactly as hoped; points showed the same
+  surface as a dot cloud, curvature and hole boundaries still legible.
 
 **First real answer built 2026-09-06:** `demo/interactive-demo.html` — pick
 any file, it decodes and renders, pan/zoom/rotate, Clear and try another.
