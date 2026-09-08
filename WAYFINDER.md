@@ -148,7 +148,7 @@ different chunk, and reverse-engineering it is now the active work — D22.
   not chased further here, out of scope for this ticket). Then, carefully —
   reporting only booleans, chunk names, and byte counts below, no path,
   property, or geometry content — against **3 real confidential files**
-  (`the customer corpus`): the 358 KB part decoded the same way in
+  (from the customer corpus): the 358 KB part decoded the same way in
   2ms; the SLDDRW case uses a *different* but still generic, non-identifying
   chunk name, `Contents/VBLists`, consistent across both a 215 KB drawing
   (2ms) and the 13.5 MB drawing that needed manual killing under the old
@@ -217,12 +217,13 @@ different chunk, and reverse-engineering it is now the active work — D22.
   and yields a decodable mesh," not "SLDDRW works."
 - **D15 — Close small tessellation-seam gaps, only from real boundary
   vertices, disclosed rather than silent, 2026-09-07.** Grew out of the D7
-  render-mode toggle: using it on `customer part A` (real customer
-  part, DECISIONS.md) surfaced a dark region Josh suspected was a missing
-  face. Pixel-sampling and a live `DoubleSide` backface-culling test proved
-  that specific region was real, correctly-wound geometry (just dimly lit) —
-  but a real watertightness check (every edge of a closed surface should be
-  shared by exactly two triangles) found something genuine elsewhere: 77
+  render-mode toggle: using it on customer part A (a real customer part,
+  named in DECISIONS.md) surfaced a dark region Josh suspected was a
+  missing face. Pixel-sampling and a live `DoubleSide` backface-culling
+  test proved that specific region was real, correctly-wound geometry
+  (just dimly lit) — but a real watertightness check (every edge of a
+  closed surface should be shared by exactly two triangles) found
+  something genuine elsewhere: 77
   boundary edges forming 6 small loops, most plausibly SolidWorks
   tessellating each face independently and not sampling a shared curve (a
   hole rim, say) identically on both sides. Josh: other viewers paper over
@@ -274,8 +275,8 @@ different chunk, and reverse-engineering it is now the active work — D22.
   next.
 - **D16 — The unit-normal-ratio validity check was too strict, silently
   dropping real curved-surface tessellation blocks, 2026-09-07.** Grew out
-  of investigating the same `customer part A` gaps D15 tried (and
-  failed, see that entry's supersede note) to paper over. Chasing one
+  of investigating the same customer part A gaps D15 tried (and failed,
+  see that entry's supersede note) to paper over. Chasing one
   specific visual gap by hand (pixel-sampling background-black, a live
   `DoubleSide` test ruling out backface culling) found nothing wrong at
   that exact spot — but a byte-level scan of every "4,8,2" marker
@@ -392,10 +393,10 @@ different chunk, and reverse-engineering it is now the active work — D22.
   checked and ruled out before finding the real cause.
 - **D19 — "Missing faces" on a second real customer part had two unrelated
   causes: a tail-marker parsing collision, and genuinely reversed winding
-  in the source data, 2026-09-07.** Josh reported `customer part B`
-  rendering with visible black gaps through solid-looking walls, and asked
-  for the whole 62-file customer corpus (`the customer corpus`) to
-  be swept, not just this one file fixed.
+  in the source data, 2026-09-07.** Josh reported customer part B (named
+  in DECISIONS.md) rendering with visible black gaps through solid-looking
+  walls, and asked for the whole 62-file customer corpus to be swept, not
+  just this one file fixed.
 
   **Cause 1, a real parsing bug:** the tail layout `a, b, 2, TOTAL` was
   matched on `TOTAL`'s value alone, without checking that the literal `2`
@@ -409,7 +410,7 @@ different chunk, and reverse-engineering it is now the active work — D22.
   a directed-edge winding-consistency check (catches a shared edge two
   triangles traverse the *same* direction, which a plain edge-count check
   can't see): 0 non-manifold/flipped edges after, was 4/14; the known-good
-  `customer part A` unaffected throughout.
+  customer part A unaffected throughout.
 
   **Cause 2, found only by sweeping the whole corpus:** even after fixing
   Cause 1, 19 of 62 files still carried flipped-winding edges (up to 51 on
@@ -740,8 +741,8 @@ and stay small enough that its source reads as an example.
   Existed in the earlier Python-built proof of concept (`demo/viewer.html`);
   missing from the current TypeScript `interactive-demo.html`. Josh asked
   for it back while debugging a real SolidWorks decode artifact (a
-  malformed face on `customer part A`, DECISIONS.md) — wireframe
-  would have shown the triangle-strip structure directly instead of
+  malformed face on customer part A, DECISIONS.md) — wireframe would
+  have shown the triangle-strip structure directly instead of
   needing a temporary per-strip color-coding patch to see it. Not built
   yet, deliberately (Josh: "don't build it, just add it to our TODO
   list") — logged here since it's squarely a D7 viewer-feel question, not
