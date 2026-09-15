@@ -7,6 +7,12 @@ The library reads STEP, IGES, native SolidWorks parts, common mesh formats,
 and DXF drawings. It returns one neutral geometry model for every format, so
 a caller can show any of them with the same rendering code.
 
+![A native SolidWorks part decoded and rendered in the browser, in solid, wireframe and points modes](demo/shots/rover-tire-demo.gif)
+
+_The wheel tire from the [JPL Open Source Rover](https://github.com/nasa-jpl/open-source-rover/tree/v3.0.0)
+(Apache 2.0), decoded from its native `.SLDPRT` file with no SolidWorks
+installed. Recorded from `demo/interactive-demo.html`._
+
 ## Status
 
 Version 1.0.0. The public surface — `ModelLoader`, `ModelExporter`,

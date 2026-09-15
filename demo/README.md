@@ -178,6 +178,17 @@ former's published `dist/occt-import-js.wasm` build unchanged.
 
 ## Screenshots
 
+**`shots/rover-tire-demo.gif`** — the README's demo. The wheel tire from the
+[JPL Open Source Rover](https://github.com/nasa-jpl/open-source-rover/tree/v3.0.0)
+(Apache 2.0) loaded into `interactive-demo.html` and shown
+in solid, wireframe and points modes. The source `.SLDPRT` is 14.5 MB and is
+not committed — it lives in `private/`. Only the tagged release holds the
+SolidWorks files. The repository's current `master` replaced them with STEP.
+The file reports Parasolid modeller version 3101278 (v31, which matches
+SolidWorks 2019), so it is one version newer than the NIST corpus. It
+decodes, but its bounding box has no STEP twin to check against, so it adds
+nothing to the verified claim in the top-level `README.md`.
+
 **`shots/nist-ctc-01.png`** — the working case. `nist_ctc_01` decoded to
 3,396 vertices and 2,296 triangles, with a bounding box of
 800.00 × 450.00 × 150.00 mm. That matches the box measured independently from
