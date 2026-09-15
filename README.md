@@ -11,7 +11,7 @@ a caller can show any of them with the same rendering code.
 
 _The wheel tire from the [JPL Open Source Rover](https://github.com/nasa-jpl/open-source-rover/tree/v3.0.0)
 (Apache 2.0), decoded from its native `.SLDPRT` file with no SolidWorks
-installed. Recorded from `demo/interactive-demo.html`._
+installed.
 
 ## Status
 
