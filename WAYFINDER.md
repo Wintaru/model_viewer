@@ -558,8 +558,19 @@ which block building:
   is mixed in.
 - Explain `nist_ftc_11`, which reports a box that is too small. A real miss.
 - Test more SolidWorks versions. Only parts are proven, and only on 2018 and
-  2020. **Narrowed 2026-09-07, see D20, below: SLDASM decoding itself is no
-  longer untested** — one real customer assembly now decodes and renders
+  2020. **Narrowed again 2026-09-07 16:30 — the whole customer corpus is
+  SolidWorks 2026, so version coverage is much wider than this item says.**
+  Every PDF published beside those drawings names `SOLIDWORKS 2026 SP2.1` as
+  its creator, all 87 of them, and 62 parts, 35 assemblies and 87 drawings
+  from that same set all decode without error. Do not read the containers'
+  own `docProps/app.xml` as the writing application: it says `23.0000` in
+  every file, which is SolidWorks 2015, the release that introduced this
+  container generation (D13's "2015+" format). It is a constant of the
+  format. The real remaining gap is narrower than "test more versions": no
+  version other than 2018 has a *dimensional* check, because only the NIST
+  files have a STEP twin to measure against. 2026 is proven to decode, not
+  proven to measure. **Narrowed 2026-09-07, see D20, below: SLDASM decoding
+  itself is no longer untested** — one real customer assembly now decodes and renders
   correctly — but assemblies with multiple components, nested
   sub-assemblies, or suppressed components remain unchecked, and the
   SolidWorks-version caveat still applies equally to assemblies. **A
@@ -727,6 +738,203 @@ First concrete steps, in order:
    added dimension, an extra view) to localise what encodes what.
 3. Only then decide whether this is tractable. Report honestly if it is not
    — v1 does not depend on the answer.
+
+**Step 1 done, 2026-09-07 — and the "no magic-number anchor" premise above
+was wrong.** The chunk is plain structured data (entropy 3.2 to 3.9 bits per
+byte, half to two thirds of all bytes zero) and it names its own types. Every
+class writes its name in plaintext the first time it appears, framed as
+`FF FF`, a u16 schema number, and a u16 name length — matching 132 of 132,
+147 of 147, and 150 of 150 names across drawings from 215 KB to 13.5 MB. That
+is the layout MFC's `CArchive` uses for a new class, and SolidWorks is an MFC
+application. The names are the drawing itself: `moView_c`, `moLayer_c`,
+`moDisplayDistanceDim_c`, `moDimTolerance_c`, `moDisplayNote_c`,
+`moTitleBlockFeature_c`, `moCompEdge_c`, `gcXhatch_c`, `bomTable_c`. The
+vocabulary grows only from 132 to 150 across a 26x range of size, so the set
+of types to implement is bounded and small. See
+`research/d22-definition-probe.py`.
+
+**Step 2 attempted the same day, and it did not work. Three hypotheses, all
+dead.** Recorded so nobody spends the time again:
+
+- **A generic sequential walker is structurally impossible, not merely hard.**
+  MFC's `CArchive` delegates each object's body to that class's own
+  `Serialize` method. Nothing in the stream states an object's length. So no
+  reader can skip an object whose layout it does not already know, and one
+  unknown class stops the walk permanently.
+- **The `0x8000 | index` class back-reference does not hold as written.**
+  Valid indices are genuinely enriched — 885 occurrences against 198 for
+  same-magnitude values that cannot be an index in this file, about 4.5 times
+  — so these values do mean something. But 75 of them appear *before* the
+  class they would refer to is declared, which the scheme forbids outright.
+  Real signal, wrong model.
+- **Values do not sit immediately after a class declaration.** Windows of 512
+  bytes after `moLengthParameter_c`, `moDisplayDistanceDim_c`,
+  `moDimTolerance_c`, `moView_c` and `moLayer_c` hold 4 to 13 float64 values
+  in engineering range, against a mean of 12.5 for random windows of the same
+  size. No enrichment at all.
+
+**So the class names say what is in the chunk, and not where.** That is the
+honest state: legible, not yet walkable.
+
+**What step 2 needs, and does not have.** Controlled input — two drawings of
+one part that differ in exactly one known way. The customer corpus holds 89
+drawings and they are all of different parts, so it cannot supply that pair.
+The nearest lever it does have: four drawings share a base part number, and
+two of them declare *exactly* the same 114 classes while differing in size by
+128 KB. Same record types, different content. That is the right shape for
+alignment work, even though the difference is not one known edit.
+
+**⚠️ SUPERSEDED 2026-09-07 16:04 — the paragraph below was wrong.** It said
+this needed SolidWorks to generate a controlled pair. Josh does not have
+SolidWorks, which forced a better idea: ground truth was already sitting in
+the corpus. See "Step 2 works after all", next.
+
+> **Blocked on Josh, not on effort.** A real controlled pair needs SolidWorks:
+> open a drawing, save it, add one dimension, save it again. Two files, one
+> known difference. That single pair is worth more than more scanning of the 89
+> already in hand.
+
+**Step 2 works after all, 2026-09-07 16:04 — anchor on values whose answer is
+already known.** Most drawings ship beside a PDF of themselves. Every decimal
+number printed on that sheet is a number SolidWorks itself wrote, so finding
+that exact number as a float in the chunk locates a real field. No controlled
+pair needed, and no walker either.
+
+It works, and the control is what proves it. Each true value is also searched
+for after multiplying by a random factor between 1.11 and 1.93. Across two
+drawings: 3 of 7 and 2 of 5 sheet numbers found as written, 4 of 7 and 1 of 5
+found again once converted from inches to metres, and **0 of 7 and 0 of 5
+decoys found in any unit**. No false positives at all.
+
+Following one hit found the first record structure in this chunk: **31 records
+at a fixed 612-byte stride, with 423 of the 612 byte positions holding the
+same value in every record.** The varying positions include a long
+`#.#.#.#.` run, the signature of UTF-16 text — a fixed-width description
+field. A stride that matched by chance looks completely different (15 constant
+positions out of 2,472, against 423 of 612), so the two separate cleanly, and
+the script rejects anything under 20 percent constant.
+
+Honest limit: that array sits under `moHoleWizardInfo_c`, so it is hole
+standards data, not the views and dimensions this project wants. It proves the
+method, not the payload. The second drawing found no array at all, so this
+locates fields where ground truth happens to reach and nowhere else.
+
+`research/d22-value-locate.py`.
+
+**The sheet record is located, 2026-09-07 16:14 — and it needs no PDF.** A
+drawing sheet is one of a handful of standard sizes, so those values are known
+in advance. Searching for them found the same arrangement in **all 87 real
+drawings**: sheet height and width as two float64 in metres, eight bytes
+apart, height first. Decoy sizes that no standard uses (19x13, 12.2x7.5,
+30.6x21.9) matched in none of them.
+
+The region around that pair reads as structure rather than noise. At a fixed
+distance before it sit `1.0` and `2.0`, eight bytes apart, which is the shape
+of a scale held as numerator and denominator. At a fixed distance after it sit
+**four consecutive values of exactly half an inch**, which is the shape of
+four sheet margins. Both patterns are identical in every file checked.
+
+**The limit that seemed real, and how it fell, 2026-09-07 16:24.** All the
+drawings are ANSI B at one scale, because they are one company's template.
+Nothing varies, so the first reading of this could not tell "the sheet size
+field is here" apart from "a constant equal to the sheet size is here". An
+attempt to check the scale against the PDFs failed for a separate reason:
+`pdftotext` extracts no `SCALE` text from any of them, so the title block is
+not reachable that way.
+
+**An invariance control settles it, with no second sheet size needed.** A
+coincidental bit pattern turns up about as often per byte in every file, so
+its count grows with the chunk. A field of the sheet appears once per sheet
+however large the drawing gets. Measured across **all 88 drawings**, where the
+chunk grows **27 times over, from 768 KB to 20.8 MB**: 3 height hits, 2 width
+hits and 2 adjacent pairs — **the same counts in every single file, with no
+spread at all**. Random data cannot do that. These are fields of the sheet
+record.
+
+What that does not fix is which field means what. Height before width is the
+natural read of an ANSI B sheet, and the neighbours have the shape of a scale
+and four margins, but both are still interpretation. One drawing on a
+different sheet size confirms the lot in one run, from any source — no
+customer file and no SolidWorks needed. GitHub does not index binaries so its
+code search finds none, and the public model sites mostly want an account, so
+this is a small errand rather than a free lookup.
+
+Next after that: `moView_c`, by the same anchoring.
+
+**Going after `moView_c` ruled out three more techniques, 2026-09-07 16:33.**
+All three had controls, and all three failed. Recorded so nobody rebuilds
+them:
+
+- **Matching positions from the PDF.** `pdftotext -bbox` gives every printed
+  word's box, and the page is exactly 1224x792 points, so 17x11 inches maps
+  1:1 to the sheet. Converting a dimension's printed position to metres and
+  searching for it should locate that dimension's record. It does not: real
+  numeric-word positions scored 20 of 23 and 9 of 13, and **random positions
+  inside the same sheet scored 18 of 23 and 11 of 13**. The chunk is dense
+  with doubles in the 0 to 0.5 range, so a 1 mm tolerance matches nearly
+  anything, and the tolerance cannot be tightened, because a text box centre
+  is not the anchor point the file stores.
+- **Aligning two drawings byte by byte.** They share only a **224-byte**
+  common prefix and a 167-byte common suffix, and just 9.5 percent of the
+  first 64 KB agrees across 12 drawings. Content and structure interleave
+  from the start, so byte offsets do not correspond between files.
+- **Aligning on the class declarations instead.** This should have worked,
+  since the declarations are structural landmarks. It cannot: **87 drawings
+  hold 86 distinct class sequences**, and the largest group sharing one
+  sequence is 2 files. Classes are declared where first encountered, so the
+  order follows the drawing's content. There is no stable skeleton to align.
+
+**One real positive came out of it: the chunk holds no model-space
+dimensions.** Searching for the part's own decoded extents found nothing in
+three drawings, at tolerances from 0.0001 percent up to 0.5 percent — and
+nothing for the decoys either, meaning the chunk simply has no values in that
+neighbourhood. Combined with D21 (the model's geometry lives in
+`Contents/VBLists`), that says `Contents/Definition` is drawing space only.
+Useful, because it rules out a whole family of anchors: model dimensions
+cannot be used to find anything in here.
+
+**So value anchoring on drawing-space constants is the only technique that has
+worked, and it is anchor-limited rather than effort-limited.** Every structural
+shortcut is now closed off. Two ways to get more anchors, in order of value:
+
+1. A drawing on a different sheet size, from any source. Confirms the sheet
+   record outright and gives a second point to fit the neighbouring fields.
+2. Better text out of the PDFs. `pdftotext` yields only 5 to 7 decimal numbers
+   per sheet, far fewer than a drawing visibly carries, so most printed
+   dimensions never become anchors at all. Worth checking whether they are
+   extractable another way before concluding the ceiling is real.
+
+**A third way opened, and it was the right one — 2026-09-07 16:38. Josh asked
+whether the SLDPRT beside each drawing helps. It does, and the reason is size.**
+Every structural route above failed on a drawing's 786 KB, 132-class chunk. A
+*part* has a `Contents/Definition` chunk too: **5,440 bytes and six classes**,
+the same container and the same MFC framing at one seventy-seventh the size.
+Those six classes are exactly the last six a drawing declares, so anything
+learned in the small file applies straight to the big one. And parts align
+where drawings do not — **53 of 62 share one class sequence**, against 86
+distinct sequences among 87 drawings.
+
+That makes the gap between consecutive class declarations measurable, and a
+gap that never moves is a fixed-size record. **The first completely decoded
+record in this format:**
+
+    moANSI_c: FF FF | schema 1 | name length 8 | "moANSI_c" | u32
+              14 bytes of declaration, a 4-byte body, 18 bytes in total
+
+**Confirmed in all 186 files across all three kinds** — 62 parts, 36
+assemblies, 88 drawings — gap exactly 18 every time, body always the u32 value
+7. Running it over the corpus reports **73 classes with a fixed record size**,
+including `moDrawing_c` (empty body, a pure marker), `moHeader_c` (157 bytes)
+and the whole unit-descriptor family at 62 or 64 bytes each.
+`research/d22-record-layout.py`.
+
+Two limits, both real. A gap that never changes is strong evidence and not
+proof: this corpus is one company's template, so a variable-length record
+holding identical content everywhere would look the same. `moANSI_c` is the
+solid one, because it holds across three *file types* rather than one
+template — treat a class seen only in drawings as likely, not settled. And
+size is not meaning: `moANSI_c`'s body is 7 in every file, so its type is
+confirmed and reading it as a drafting-standard selector is inference.
 
 ### D7 — What does the viewer feel like? `[prototype]`
 
